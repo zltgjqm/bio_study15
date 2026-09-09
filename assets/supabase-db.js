@@ -11,6 +11,14 @@
   function asJsonArray(value) {
     if (!value) return [];
     if (Array.isArray(value)) return value.map((x) => String(x).trim()).filter(Boolean);
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed.map((x) => String(x).trim()).filter(Boolean);
+      } catch (e) {
+        // JSON 파싱 실패시 쉼표/줄바꿈 구분 처리
+      }
+    }
     return String(value).split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
   }
   function asObject(value) {
@@ -247,12 +255,16 @@
 
   /* ---------- diseases: 암 8종 허브 뷰용 큐레이션 데이터 ---------- */
   function rowToDisease(row) {
+    const keyGenes = asJsonArray(row.key_genes || row.elements);
+    const keyMechanisms = asJsonArray(row.key_mechanisms);
+
     return {
       id: row.id,
       name: row.name || "",
       description: row.description || "",
-      keyGenes: asJsonArray(row.key_genes),
-      keyMechanisms: asJsonArray(row.key_mechanisms),
+      keyGenes: keyGenes,
+      keyMechanisms: keyMechanisms,
+      elements: keyGenes, // UI/Map 뷰 호환성을 위해 elements 속성 추가
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -264,7 +276,7 @@
       id: isEdit ? item.id : String(item.id || "").trim() || newId("disease"),
       name: String(item.name || "").trim(),
       description: item.description || "",
-      key_genes: asJsonArray(item.keyGenes),
+      key_genes: asJsonArray(item.keyGenes || item.elements),
       key_mechanisms: asJsonArray(item.keyMechanisms),
     };
     if (!isEdit) row.created_by = auth?.user?.id;
