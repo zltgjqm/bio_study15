@@ -31,6 +31,7 @@
       <div class="tabs">
         <button class="tab-btn active" data-tab="paper">1 · Paper 직접 입력</button>
         <button class="tab-btn" data-tab="knowledge" data-owner-only>2 · Owner Knowledge</button>
+        <button class="tab-btn" data-tab="disease">3 · Disease 관리</button>
         <button class="tab-btn" data-tab="paste">GPT JSON 붙여넣기</button>
       </div>
 
@@ -84,6 +85,42 @@
         <input type="hidden" id="k-ownerId" />
         <div class="action-row"><button class="btn" onclick="saveKnowledgeForm()" id="knowledge-save-btn">Save Owner Knowledge</button><button class="btn secondary" onclick="previewKnowledgeForm()">Preview JSON</button><button class="btn secondary" onclick="sampleKnowledge()">Sample</button><span class="status" id="knowledge-status"></span></div>
         <textarea id="knowledge-preview" class="json-output" readonly placeholder="Preview JSON을 누르면 여기에 표시됩니다."></textarea>
+      </div>
+
+      <div class="side-box tab-panel" id="tab-disease">
+        <h3>Disease 관리 <small style="font-weight:400;color:var(--text-faint);">(Map 허브 뷰에서 쓰는 암 8종 데이터)</small></h3>
+        <p class="detail-sub" style="margin-bottom:18px;">암종 단위로 대표 유전자/메커니즘을 정리합니다. Owner/Member 모두 바로 추가·수정할 수 있고, 삭제는 Owner만 가능합니다.</p>
+        <div class="form-grid">
+          <div class="form-field"><label>Disease ID <small>영문 slug, 예: lung_cancer</small></label><input id="d-id" placeholder="lung_cancer" /></div>
+          <div class="form-field"><label>Disease Name <small>Paper/Knowledge의 Disease 문자열과 동일하게</small></label><input id="d-name" placeholder="Lung Cancer" /></div>
+          <div class="form-field full"><label>Description</label><textarea id="d-description" placeholder="이 암에 대한 짧은 설명"></textarea></div>
+          <div class="form-field full">
+            <label>Key Genes <small>쉼표로 여러 개, 기존 Gene 이름이면 자동완성됩니다</small></label>
+            <input id="d-keyGenes" list="known-gene-list" placeholder="EGFR, KRAS, TP53" />
+            <datalist id="known-gene-list"></datalist>
+          </div>
+          <div class="form-field full"><label>Key Mechanisms <small>줄바꿈으로 여러 개</small></label><textarea id="d-keyMechanisms" placeholder="EGFR 활성 돌연변이에 의한 MAPK 경로 활성화"></textarea></div>
+        </div>
+        <input type="hidden" id="d-editId" />
+        <div class="action-row">
+          <button class="btn" onclick="saveDiseaseForm()" id="disease-save-btn">Save Disease</button>
+          <button class="btn secondary" onclick="resetDiseaseForm()">새로 만들기</button>
+          <button class="btn secondary" onclick="deleteDiseaseForm()" id="disease-delete-btn" data-owner-only style="display:none;">Delete</button>
+          <span class="status" id="disease-status"></span>
+        </div>
+        <div id="disease-list" style="margin-top:14px;"></div>
+
+        <hr style="margin:26px 0;border:none;border-top:1px solid var(--border);" />
+
+        <h3>암-암 커스텀 관계 <small style="font-weight:400;color:var(--text-faint);">(disease_links)</small></h3>
+        <p class="detail-sub" style="margin-bottom:18px;">공유 유전자/메커니즘으로 자동 연결되지 않는, 사람이 직접 아는 두 암 사이의 관계를 적어두세요.</p>
+        <div class="form-grid">
+          <div class="form-field"><label>Disease A</label><select id="dl-a"></select></div>
+          <div class="form-field"><label>Disease B</label><select id="dl-b"></select></div>
+          <div class="form-field full"><label>관계 설명</label><input id="dl-note" placeholder="둘 다 EGFR 저항성 메커니즘을 공유함" /></div>
+        </div>
+        <div class="action-row"><button class="btn" onclick="saveLinkForm()">Save Link</button><span class="status" id="link-status"></span></div>
+        <div id="link-list" style="margin-top:14px;"></div>
       </div>
 
       <div class="side-box tab-panel" id="tab-paste">
@@ -304,6 +341,108 @@ async function savePastedJSON() {
     $("paste-status").textContent = `${items.length}개 저장 완료 ✓`;
   } catch (e) { $("paste-status").textContent = "저장 실패: " + e.message; }
 }
+/* ---------- Disease 관리 탭 ---------- */
+let DISEASES = [];
+let LINKS = [];
+
+function diseaseFromForm() {
+  return {
+    id: $("d-editId").value || $("d-id").value.trim(),
+    name: $("d-name").value.trim(),
+    description: $("d-description").value.trim(),
+    keyGenes: splitComma("d-keyGenes"),
+    keyMechanisms: splitLines("d-keyMechanisms"),
+  };
+}
+function resetDiseaseForm() {
+  $("d-editId").value = ""; $("d-id").value = ""; $("d-id").disabled = false; $("d-name").value = ""; $("d-description").value = ""; $("d-keyGenes").value = ""; $("d-keyMechanisms").value = "";
+  $("disease-save-btn").textContent = "Save Disease";
+  $("disease-delete-btn").style.display = "none";
+  $("disease-status").textContent = "";
+}
+async function saveDiseaseForm() {
+  const obj = diseaseFromForm();
+  if (!obj.id) { $("disease-status").textContent = "Disease ID(slug)를 입력하세요."; return; }
+  if (!obj.name) { $("disease-status").textContent = "Disease Name을 입력하세요."; return; }
+  const isEdit = !!$("d-editId").value;
+  try {
+    $("disease-status").textContent = "Supabase에 저장 중...";
+    await window.BioDB.saveDisease(obj, AUTH, isEdit);
+    $("disease-status").textContent = "저장 완료 ✓";
+    await loadDiseaseTabData();
+    resetDiseaseForm();
+  } catch (e) { $("disease-status").textContent = "저장 실패: " + e.message; }
+}
+function editDisease(id) {
+  const d = DISEASES.find((x) => x.id === id);
+  if (!d) return;
+  $("d-editId").value = d.id; $("d-id").value = d.id; $("d-id").disabled = true;
+  $("d-name").value = d.name; $("d-description").value = d.description;
+  $("d-keyGenes").value = (d.keyGenes || []).join(", ");
+  $("d-keyMechanisms").value = (d.keyMechanisms || []).join("\n");
+  $("disease-save-btn").textContent = "Update Disease";
+  $("disease-delete-btn").style.display = AUTH?.isOwner ? "" : "none";
+  $("disease-status").textContent = "";
+}
+async function deleteDiseaseForm() {
+  const id = $("d-editId").value;
+  if (!id || !confirm("이 Disease를 삭제할까요? 연결된 disease_links도 함께 삭제됩니다.")) return;
+  try {
+    await window.BioDB.deleteDisease(id);
+    $("disease-status").textContent = "삭제 완료 ✓";
+    await loadDiseaseTabData();
+    resetDiseaseForm();
+  } catch (e) { $("disease-status").textContent = "삭제 실패: " + e.message; }
+}
+function renderDiseaseList() {
+  $("disease-list").innerHTML = DISEASES.length
+    ? DISEASES.map((d) => `<div class="disease-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+        <span><strong>${wiki.escapeHtml(d.name)}</strong> <span style="color:var(--text-faint);">(${wiki.escapeHtml(d.id)})</span> — ${wiki.escapeHtml((d.keyGenes || []).join(", ")) || "genes 없음"}</span>
+        <button class="btn secondary" type="button" onclick="editDisease('${d.id}')" style="padding:4px 10px;">편집</button>
+      </div>`).join("")
+    : `<p style="color:var(--text-faint);font-size:13px;">등록된 Disease가 없습니다.</p>`;
+}
+function fillDiseaseSelects() {
+  const opts = DISEASES.map((d) => `<option value="${wiki.escapeHtml(d.id)}">${wiki.escapeHtml(d.name)}</option>`).join("");
+  $("dl-a").innerHTML = opts; $("dl-b").innerHTML = opts;
+}
+async function saveLinkForm() {
+  const a = $("dl-a").value, b = $("dl-b").value, note = $("dl-note").value.trim();
+  if (!a || !b || a === b) { $("link-status").textContent = "서로 다른 Disease 두 개를 선택하세요."; return; }
+  try {
+    $("link-status").textContent = "저장 중...";
+    await window.BioDB.saveDiseaseLink({ diseaseAId: a, diseaseBId: b, relationNote: note }, AUTH);
+    $("link-status").textContent = "저장 완료 ✓"; $("dl-note").value = "";
+    await loadDiseaseTabData();
+  } catch (e) { $("link-status").textContent = "저장 실패: " + e.message; }
+}
+async function deleteLinkForm(id) {
+  if (!confirm("이 관계를 삭제할까요?")) return;
+  try { await window.BioDB.deleteDiseaseLink(id); await loadDiseaseTabData(); }
+  catch (e) { $("link-status").textContent = "삭제 실패: " + e.message; }
+}
+function renderLinkList() {
+  const nameOf = (id) => (DISEASES.find((d) => d.id === id) || {}).name || id;
+  const delBtn = (id) => AUTH?.isOwner ? `<button class="btn secondary" type="button" onclick="deleteLinkForm('${id}')" style="padding:4px 10px;">삭제</button>` : "";
+  $("link-list").innerHTML = LINKS.length
+    ? LINKS.map((l) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+        <span><strong>${wiki.escapeHtml(nameOf(l.diseaseAId))} ↔ ${wiki.escapeHtml(nameOf(l.diseaseBId))}</strong> — ${wiki.escapeHtml(l.relationNote || "")}</span>
+        ${delBtn(l.id)}
+      </div>`).join("")
+    : `<p style="color:var(--text-faint);font-size:13px;">등록된 관계가 없습니다.</p>`;
+}
+async function loadDiseaseTabData() {
+  const [diseases, links] = await Promise.all([window.BioDB.fetchDiseases(), window.BioDB.fetchDiseaseLinks()]);
+  DISEASES = diseases; LINKS = links;
+  renderDiseaseList(); fillDiseaseSelects(); renderLinkList();
+  // Gene 이름 자동완성: 기존 papers/knowledge에 등장한 gene 이름 모음
+  try {
+    REMOTE = REMOTE || await window.BioDB.fetchAll();
+    const graph = wiki.buildKnowledgeGraph(window.WIKI_DATA, { remoteData: REMOTE, includeLocal: false });
+    $("known-gene-list").innerHTML = (graph.genes || []).map((g) => `<option value="${wiki.escapeHtml(g.displayName || g.title)}"></option>`).join("");
+  } catch (e) { /* 자동완성은 실패해도 무시 */ }
+}
+
 function setPrompt(type) { $("prompt-box").value = type === "knowledge" ? KNOWLEDGE_PROMPT : PAPER_PROMPT; }
 function copyPrompt() { const box = $("prompt-box"); box.select(); document.execCommand("copy"); }
 function samplePaper() { $("p-cycle").value = "8월 1주차"; $("p-disease").value = "PDAC, CRC"; renderDiseaseNoteFields({ "PDAC": ["PDAC에서는 CAF-derived CXCL12가 immune exclusion과 연결됩니다."], "CRC": ["CRC에서는 CXCL12-CXCR4 axis를 metastasis context에서 확인할 수 있습니다."] }); $("p-genes").value = "KRAS, CXCL12"; $("p-cellTypes").value = "CAF, Macrophage"; $("p-tissues").value = "Pancreas, Colon"; $("p-datasets").value = ""; $("p-markerGenes").value = "ACTA2, COL1A1"; $("p-title").value = "Stromal signaling shapes immune exclusion across gastrointestinal cancers"; $("p-journal").value = "Nature"; $("p-year").value = "2025"; $("p-authors").value = "Lee H, Kim J, et al."; $("p-doiOrUrl").value = "https://doi.org/example"; $("p-summary").value = "Tumor microenvironment에서 CAF-derived CXCL12 signal이 immune exclusion과 연결됩니다.\n여러 cancer context에서 stromal niche와 immune localization을 비교했습니다."; $("p-newKnowledge").value = "같은 CXCL12 signal도 Disease context별로 해석을 다르게 저장해야 합니다."; $("p-pathway").value = "KRAS 변이 → CAF 활성화 → CXCL12 분비 → CXCR4+ 면역세포 배제"; $("p-tags").value = "PDAC, CRC, CAF, scRNA-seq"; previewPaperForm(); }
@@ -348,6 +487,7 @@ $("p-disease").addEventListener("input", () => renderDiseaseNoteFields());
   setPrompt("paper");
   renderDiseaseNoteFields();
   await loadEditItem();
+  loadDiseaseTabData();
 })();
 </script>
 </body>
