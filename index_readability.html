@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Biology Second Brain</title>
+<link rel="stylesheet" href="assets/style.css" />
+
+<style>
+/* Readability upgrades: hierarchy + detail content emphasis */
+:root {
+  --text-strong: #172033;
+  --text-soft: #64748b;
+  --panel-soft: rgba(255, 255, 255, 0.78);
+  --panel-line: rgba(148, 163, 184, 0.28);
+}
+
+.section-label {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cat-card h3,
+.mini-panel h3 {
+  font-size: 1.22rem;
+  font-weight: 850;
+  color: var(--text-strong);
+}
+
+.cat-card p,
+.mini-panel p {
+  font-size: 0.98rem;
+  line-height: 1.75;
+  color: var(--text-soft);
+}
+
+.paper-card {
+  align-items: stretch;
+  gap: 16px;
+}
+
+.paper-title {
+  font-size: 1.08rem;
+  font-weight: 850;
+  line-height: 1.45;
+  color: var(--text-strong);
+}
+
+.paper-meta {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.paper-preview {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.paper-preview-block {
+  padding: 12px 14px;
+  border: 1px solid var(--panel-line);
+  border-radius: 16px;
+  background: var(--panel-soft);
+}
+
+.paper-preview-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.paper-preview-text {
+  font-size: 1.02rem;
+  font-weight: 650;
+  line-height: 1.65;
+  color: var(--text-strong);
+}
+
+/* Detail pages / entity pages: works when these class names exist in the linked page templates */
+.detail-card,
+.detail-panel,
+.entity-detail,
+.paper-detail,
+.content-card {
+  border: 1px solid var(--panel-line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.detail-card h1,
+.entity-detail h1,
+.paper-detail h1 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.12;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.detail-card h2,
+.detail-section h2,
+.entity-section h2,
+.paper-section h2 {
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.detail-section,
+.entity-section,
+.paper-section {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--panel-line);
+  border-radius: 22px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.detail-row,
+.info-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.detail-row:last-child,
+.info-row:last-child {
+  border-bottom: 0;
+}
+
+.detail-label,
+.info-label,
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.detail-value,
+.info-value,
+.field-value {
+  font-size: 1.08rem;
+  font-weight: 650;
+  line-height: 1.75;
+  color: var(--text-strong);
+}
+
+.summary-content,
+.summary-text,
+.paper-summary,
+.new-knowledge,
+.pathway-content,
+.pathway-text {
+  font-size: 1.12rem;
+  font-weight: 650;
+  line-height: 1.8;
+  color: var(--text-strong);
+}
+
+.pathway-content,
+.pathway-text {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(241, 245, 249, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+@media (max-width: 720px) {
+  .detail-row,
+  .info-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .paper-preview-text,
+  .detail-value,
+  .info-value,
+  .field-value,
+  .summary-content,
+  .summary-text,
+  .paper-summary,
+  .new-knowledge,
+  .pathway-content,
+  .pathway-text {
+    font-size: 1rem;
+  }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span> Biology Second Brain <span class="sub">/ Supabase wiki</span></div>
+  <nav class="top-links">
+    <a href="#diseases">Disease</a>
+    <a href="#genes">Gene</a>
+    <a href="#cells">Cell Type</a>
+    <a href="#tissues">Tissue</a>
+    <a href="#papers">Paper</a>
+    <a href="pages/library.html">Library</a>
+    <a href="pages/graph.html">Map</a>
+    <a href="pages/add.html" data-member-plus style="color: var(--accent-cell);">+ Add</a>
+  </nav>
+</header>
+
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
+
+<main class="shell">
+  <section class="hero">
+    <div class="hero-eyebrow">Disease → Gene → Cell Type → Tissue → Paper</div>
+    <h1>Biology Second Brain</h1>
+    <p>Supabase에 저장된 Paper를 여러 컴퓨터에서 동기화하고, role에 따라 Public / Members / Private Library를 나눠 보는 Biology Wiki.</p>
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search-input" type="text" placeholder="Gene, Cell Type, Tissue, Disease, Paper를 검색하세요." autocomplete="off" />
+        <span class="search-kbd">/</span>
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </section>
+
+  <div class="app-banner">
+    <div class="mini-panel">
+      <h3>Supabase로 공유되는 Biology Wiki</h3>
+      <p><b>Owner</b>는 모든 논문/개인 지식을 관리하고, <b>Member</b>는 논문을 추가할 수 있으며, <b>Viewer</b>는 공개 논문만 볼 수 있습니다.</p>
+      <div class="count-row" id="count-row"></div>
+    </div>
+    <a class="mini-panel" href="pages/add.html" data-member-plus>
+      <h3>새로운 Paper 추가 →</h3>
+      <p>Paper를 직접 입력하거나 ChatGPT JSON을 붙여넣어 Supabase에 저장하세요. Member가 추가한 논문은 검토 대기로 들어갑니다.</p>
+    </a>
+  </div>
+
+  <div class="section-label">둘러보기</div>
+  <div class="card-grid">
+    <a class="cat-card disease" href="#diseases" id="diseases"><div class="icon">Dx</div><h3>Disease</h3><p>Disease별 Major Genes, Cell Types, Tissues, Related Papers를 한 번에 봅니다.</p><span class="go">View →</span></a>
+    <a class="cat-card gene" href="#genes" id="genes"><div class="icon">Aa</div><h3>주요 Gene</h3><p>Paper에서 반복적으로 등장한 Gene와 관련 Disease, Cell Type을 연결합니다.</p><span class="go">View →</span></a>
+    <a class="cat-card cell" href="#cells" id="cells"><div class="icon">◍</div><h3>Cell Type</h3><p>Marker Gene와 Tissue context, Related Paper를 함께 탐색합니다.</p><span class="go">View →</span></a>
+    <a class="cat-card tissue" href="#tissues" id="tissues"><div class="icon">▤</div><h3>Tissue</h3><p>Tissue별 Disease, Gene, Cell Type, Paper 연결을 확인합니다.</p><span class="go">View →</span></a>
+  </div>
+
+  <div class="section-label">빠른 목록</div>
+  <div class="card-grid" id="quick-lists"></div>
+
+  <div class="section-label" id="papers">최근 추가한 Paper</div>
+  <div class="cycle-filter-row">
+    <label for="cycle-filter">사이클로 보기</label>
+    <select id="cycle-filter"><option value="">전체 사이클</option></select>
+  </div>
+  <div class="paper-list" id="paper-list"><div class="loading-card">Supabase에서 불러오는 중...</div></div>
+
+  <div class="section-label" data-owner-only>Owner Knowledge</div>
+  <div class="paper-list" id="knowledge-list" data-owner-only></div>
+</main>
+
+<footer>Biology Second Brain — Supabase + RLS 기반 Biology Wiki.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script src="assets/auth-gate.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/search.js"></script>
+<script src="assets/supabase-db.js"></script>
+<script>
+(async function () {
+  const auth = await window.AuthGate.requireAuth({ basePath: "" });
+  if (!auth) return;
+
+  const wiki = window.BiologyWiki;
+  const remote = await window.BioDB.fetchAll();
+  const graph = wiki.buildKnowledgeGraph(window.WIKI_DATA, { remoteData: remote, includeLocal: false });
+  window.initWikiSearch({ inputId: "search-input", resultsId: "search-results", graph });
+
+  const counts = document.getElementById("count-row");
+  counts.innerHTML = [
+    ["Disease", graph.diseases.length], ["Gene", graph.genes.length], ["Cell Type", graph.cellTypes.length], ["Tissue", graph.tissues.length], ["Paper", graph.papers.length], ["Knowledge", graph.knowledge.length]
+  ].map(([label, count]) => `<span class="count-pill"><b>${count}</b> ${label}</span>`).join("");
+
+  const quick = document.getElementById("quick-lists");
+  quick.innerHTML = "";
+  [
+    ["Disease", graph.diseases, "disease"],
+    ["Gene", graph.genes, "gene"],
+    ["Cell Type", graph.cellTypes, "cell"],
+    ["Tissue", graph.tissues, "tissue"],
+  ].forEach(([title, items, cls]) => {
+    const sorted = items.slice().sort((a, b) => wiki.recencyFor(b, graph) - wiki.recencyFor(a, graph));
+    const card = document.createElement("div");
+    card.className = `cat-card ${cls}`;
+    card.innerHTML = `<h3>${title}</h3><div class="chip-row">${sorted.slice(0, 10).map((item) => `<a class="chip" href="${wiki.entityUrl(item)}"><span class="dot ${item.type}"></span>${wiki.escapeHtml(item.displayName)}</a>`).join("")}</div>`;
+    quick.appendChild(card);
+  });
+
+  function cycleTag(cycle) { return cycle ? `<span class="cycle-badge">${wiki.escapeHtml(cycle)}</span>` : ""; }
+  function badge(label, value, cls) { return value ? `<span class="${cls} ${wiki.escapeHtml(value)}">${wiki.escapeHtml(label || value)}</span>` : ""; }
+  function firstText(value) {
+    if (!value) return "";
+    if (Array.isArray(value)) return value.filter(Boolean).join(" ");
+    return String(value);
+  }
+  function previewBlock(label, value) {
+    const text = firstText(value).trim();
+    if (!text) return "";
+    const shortText = text.length > 170 ? `${text.slice(0, 170)}...` : text;
+    return `<div class="paper-preview-block"><span class="paper-preview-label">${wiki.escapeHtml(label)}</span><div class="paper-preview-text">${wiki.escapeHtml(shortText)}</div></div>`;
+  }
+  function paperCardHtml(p) {
+    const preview = [
+      previewBlock("Summary", p.summary),
+      previewBlock("Pathway", p.pathway)
+    ].filter(Boolean).join("");
+    return `<a class="paper-card" href="${wiki.entityUrl(p)}"><div class="paper-main"><p class="paper-title">${wiki.escapeHtml(p.title)}</p><div class="paper-meta">${cycleTag(p.readCycle)}${badge(p.visibility, p.visibility, "visibility-badge")}${badge(p.reviewStatus, p.reviewStatus, "status-badge")}<span>${wiki.escapeHtml(p.authors || "")}</span><span>·</span><span>${wiki.escapeHtml(p.journal || "")}</span><span>·</span><span>${wiki.escapeHtml(p.year || "")}</span></div><div class="tag-row">${(p.tags || []).map((t) => `<span class="tag">${wiki.escapeHtml(t)}</span>`).join("")}</div>${preview ? `<div class="paper-preview">${preview}</div>` : ""}</div><span class="paper-open">Open →</span></a>`;
+  }
+  function knowledgeCardHtml(k) {
+    const preview = [
+      previewBlock("Note", k.summary || k.content || k.body),
+      previewBlock("Source", k.originalSource)
+    ].filter(Boolean).join("");
+    return `<a class="paper-card" href="${wiki.entityUrl(k)}"><div class="paper-main"><p class="paper-title">${wiki.escapeHtml(k.title)}</p><div class="paper-meta">${cycleTag(k.readCycle)}<span>${wiki.escapeHtml(k.category || "Knowledge")}</span><span>·</span><span>${wiki.escapeHtml(k.originalSource || "개인 메모")}</span></div><div class="tag-row">${(k.tags || []).map((t) => `<span class="tag">${wiki.escapeHtml(t)}</span>`).join("")}</div>${preview ? `<div class="paper-preview">${preview}</div>` : ""}</div><span class="paper-open">Open →</span></a>`;
+  }
+  function emptyCard(message) { return `<div class="paper-card"><div class="paper-main"><p class="paper-title">${message}</p></div></div>`; }
+  function renderCycleGroups(containerId, items, cardFn, emptyMessage, filterCycle) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const filtered = filterCycle ? items.filter((it) => (it.readCycle && it.readCycle.trim() ? it.readCycle.trim() : "사이클 미지정") === filterCycle) : items;
+    if (!filtered.length) { container.innerHTML = emptyCard(emptyMessage); return; }
+    const groups = wiki.groupByCycle(filtered);
+    container.innerHTML = groups.map((g, i) => `
+      <details class="cycle-group" ${i === 0 || filterCycle ? "open" : ""}>
+        <summary><span>${wiki.escapeHtml(g.cycle)}</span><span class="count">${g.items.length}개</span></summary>
+        <div class="paper-list">${g.items.map(cardFn).join("")}</div>
+      </details>`).join("");
+  }
+
+  const cycleSet = wiki.groupByCycle([...graph.papers, ...graph.knowledge]).map((g) => g.cycle);
+  const cycleFilterEl = document.getElementById("cycle-filter");
+  cycleSet.forEach((cycle) => {
+    const opt = document.createElement("option");
+    opt.value = cycle; opt.textContent = cycle;
+    cycleFilterEl.appendChild(opt);
+  });
+
+  function renderLists() {
+    const filterCycle = cycleFilterEl.value;
+    renderCycleGroups("paper-list", graph.papers.slice().sort((a,b) => Number(b.addedAt||0) - Number(a.addedAt||0)), paperCardHtml, "아직 추가한 Paper가 없습니다.", filterCycle);
+    renderCycleGroups("knowledge-list", graph.knowledge.slice().sort((a,b) => Number(b.addedAt||0) - Number(a.addedAt||0)), knowledgeCardHtml, "Owner Knowledge가 없습니다.", filterCycle);
+  }
+  cycleFilterEl.addEventListener("change", renderLists);
+  renderLists();
+  window.AuthGate.requireAuth;
+})();
+</script>
+</body>
+</html>

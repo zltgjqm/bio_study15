@@ -1,0 +1,165 @@
+/* Map / Network graph page — built on the existing style.css design tokens */
+
+.map-shell {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  height: calc(100vh - 64px);
+  min-height: 560px;
+}
+
+.map-sidebar {
+  border-right: 1px solid var(--border-soft);
+  background: var(--surface);
+  padding: 20px 18px;
+  overflow-y: auto;
+}
+.map-sidebar h3 {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  margin: 22px 0 10px;
+}
+.map-sidebar h3:first-child { margin-top: 0; }
+
+.layer-row, .disease-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13.5px;
+}
+.layer-row:hover, .disease-row:hover { background: var(--surface-hover); }
+.layer-row input, .disease-row input { accent-color: var(--text); }
+
+.type-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.type-dot.disease { background: var(--accent-disease); }
+.type-dot.gene { background: var(--accent-gene); }
+.type-dot.cell_type { background: var(--accent-cell); }
+.type-dot.tissue { background: var(--accent-tissue); }
+.type-dot.paper { background: var(--accent-paper); border-radius: 3px; }
+.type-dot.knowledge { background: var(--accent-knowledge); border-radius: 3px; }
+
+.map-actions { display: flex; gap: 8px; margin-bottom: 4px; }
+.map-actions button {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.map-actions button:hover { color: var(--text); border-color: var(--text-faint); }
+
+.legend-line { display: inline-block; width: 16px; height: 2px; border-radius: 1px; margin-right: 9px; vertical-align: middle; }
+.legend-item { display: flex; align-items: center; font-size: 12.5px; color: var(--text-muted); padding: 4px 0; }
+
+.map-main { position: relative; background: #fbfbfc; }
+#cy { width: 100%; height: 100%; }
+
+.map-canvas-controls {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+
+#map-detail {
+  position: absolute;
+  top: 0; right: 0;
+  width: 360px;
+  height: 100%;
+  background: #fff;
+  border-left: 1px solid var(--border-soft);
+  box-shadow: -12px 0 30px rgba(0,0,0,.05);
+  transform: translateX(100%);
+  transition: transform .2s ease;
+  overflow-y: auto;
+  padding: 24px 22px;
+  z-index: 10;
+}
+#map-detail.open { transform: translateX(0); }
+#map-detail .close-btn {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: pointer;
+}
+#map-detail .close-btn:hover { color: var(--text); }
+#map-detail .type-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+#map-detail h2 {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 18px;
+  line-height: 1.4;
+  margin: 4px 0 6px;
+}
+#map-detail .map-meta { color: var(--text-faint); font-size: 12.5px; font-family: var(--font-mono); margin-bottom: 16px; }
+#map-detail .map-desc { font-size: 13.5px; line-height: 1.7; color: var(--text); margin-bottom: 18px; }
+#map-detail .block { margin-bottom: 18px; }
+#map-detail .block h4 {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin: 0 0 10px;
+}
+#map-detail .related-paper {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  padding: 9px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  text-decoration: none;
+}
+#map-detail .related-paper:hover { border-color: var(--border); background: var(--surface); }
+#map-detail .open-full {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chip-btn, #map-detail .related-paper {
+  font: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+#map-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-faint); font-size: 13.5px; text-align: center; padding: 40px;
+}
+
+@media (max-width: 860px) {
+  .map-shell { grid-template-columns: 1fr; height: auto; }
+  .map-sidebar { max-height: 260px; }
+  .map-main { height: 70vh; }
+  #map-detail { width: 100%; }
+}

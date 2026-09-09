@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Users · Biology Second Brain</title>
+<link rel="stylesheet" href="../assets/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ users</span></div>
+  <nav class="top-links">
+    <a href="../index.html">Home</a>
+    <a href="library.html">Library</a>
+    <a href="graph.html">Map</a>
+    <a href="add.html" data-member-plus>+ Add</a>
+  </nav>
+</header>
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
+<main class="shell">
+  <section class="hero" style="padding-bottom:20px;">
+    <div class="hero-eyebrow">Owner 전용</div>
+    <h1>Users</h1>
+    <p>가입한 계정의 role을 owner / member / viewer / blocked로 관리합니다.</p>
+  </section>
+  <div id="not-owner" class="side-box" style="display:none;">
+    <h3>접근 권한이 없습니다</h3>
+    <p class="detail-sub">Users 페이지는 Owner만 볼 수 있어요.</p>
+  </div>
+  <div class="admin-panel" id="users-panel">
+    <h3>User Access</h3>
+    <div id="user-list"><div class="loading-card">사용자 목록 불러오는 중...</div></div>
+  </div>
+</main>
+<footer>role 변경은 Supabase RLS로 보호됩니다.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/supabase-config.js"></script>
+<script src="../assets/auth-gate.js"></script>
+<script src="../assets/data.js"></script>
+<script src="../assets/search.js"></script>
+<script src="../assets/supabase-db.js"></script>
+<script>
+const wiki = window.BiologyWiki;
+const $ = (id) => document.getElementById(id);
+let AUTH = null;
+let PROFILES = [];
+
+function badge(value, cls) { return value ? `<span class="${cls} ${wiki.escapeHtml(value)}">${wiki.escapeHtml(value)}</span>` : ""; }
+
+async function changeProfileRole(id, role) {
+  try { await window.BioDB.updateProfileRole(id, role); await loadAndRender(); }
+  catch (e) { alert("role 변경 실패: " + e.message); }
+}
+
+function renderUsers() {
+  const box = $("user-list");
+  if (!PROFILES.length) { box.innerHTML = `<div class="loading-card">표시할 사용자가 없습니다.</div>`; return; }
+  box.innerHTML = `<table class="admin-table"><thead><tr><th>Email</th><th>Role</th><th>Change</th></tr></thead><tbody>${PROFILES.map((p) => `<tr><td>${wiki.escapeHtml(p.email || "-")}</td><td>${badge(p.role, "role-badge")}</td><td><select class="inline-select" onchange="changeProfileRole('${wiki.escapeHtml(p.id)}', this.value)"><option value="pending" ${p.role === "pending" ? "selected" : ""}>pending</option><option value="owner" ${p.role === "owner" ? "selected" : ""}>owner</option><option value="member" ${p.role === "member" ? "selected" : ""}>member</option><option value="viewer" ${p.role === "viewer" ? "selected" : ""}>viewer</option><option value="blocked" ${p.role === "blocked" ? "selected" : ""}>blocked</option></select></td></tr>`).join("")}</tbody></table>`;
+}
+
+async function loadAndRender() {
+  PROFILES = await window.BioDB.fetchProfiles();
+  renderUsers();
+}
+
+(async function init() {
+  AUTH = await window.AuthGate.requireAuth({ basePath: "../" });
+  if (!AUTH) return;
+  if (!AUTH.isOwner) {
+    $("not-owner").style.display = "";
+    $("users-panel").style.display = "none";
+    return;
+  }
+  try { await loadAndRender(); }
+  catch (e) { $("user-list").innerHTML = `<div class="error-card">사용자 목록을 불러오지 못했습니다: ${wiki.escapeHtml(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>

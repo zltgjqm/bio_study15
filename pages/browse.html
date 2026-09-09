@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Browse · Biology Second Brain</title>
+<link rel="stylesheet" href="../assets/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ browse</span></div>
+  <nav class="top-links">
+    <a href="../index.html">Home</a>
+    <a href="library.html">Library</a>
+    <a href="graph.html">Map</a>
+    <a href="add.html" data-member-plus>+ Add</a>
+    <a href="users.html" data-owner-only>Users</a>
+  </nav>
+</header>
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
+<main class="shell">
+  <div class="crumb"><a href="../index.html">Home</a> / <span id="crumb-label">Browse</span></div>
+  <section class="hero" style="padding-bottom:20px;">
+    <div class="hero-eyebrow" id="browse-eyebrow">Browse</div>
+    <h1 id="browse-title">목록</h1>
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="browse-filter" type="text" placeholder="이름으로 검색" autocomplete="off" />
+      </div>
+    </div>
+  </section>
+  <div class="chip-row" id="browse-list" style="margin-top:8px;"></div>
+</main>
+<footer>Paper/Knowledge에서 자동으로 모인 목록입니다.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/supabase-config.js"></script>
+<script src="../assets/auth-gate.js"></script>
+<script src="../assets/data.js"></script>
+<script src="../assets/search.js"></script>
+<script src="../assets/supabase-db.js"></script>
+<script>
+const wiki = window.BiologyWiki;
+const $ = (id) => document.getElementById(id);
+let ALL_ITEMS = [];
+
+function dotType(t) { return t === "knowledge" ? "paper" : t; }
+function render() {
+  const q = $("browse-filter").value.trim().toLowerCase();
+  const filtered = q ? ALL_ITEMS.filter((item) => (item.displayName || "").toLowerCase().includes(q)) : ALL_ITEMS;
+  const box = $("browse-list");
+  if (!filtered.length) { box.innerHTML = `<p style="color:var(--text-faint);">표시할 항목이 없습니다.</p>`; return; }
+  box.innerHTML = filtered.map((item) => `<a class="chip" href="${wiki.entityUrl(item, "../")}"><span class="dot ${dotType(item.type)}"></span>${wiki.escapeHtml(item.displayName)}</a>`).join("");
+}
+(async function init() {
+  const auth = await window.AuthGate.requireAuth({ basePath: "../" });
+  if (!auth) return;
+  const params = new URLSearchParams(location.search);
+  const type = params.get("type") || "disease";
+  const labels = { disease: "Disease", gene: "Gene", cell_type: "Cell Type", tissue: "Tissue" };
+  const eyebrows = { disease: "둘러보기 · Disease", gene: "둘러보기 · Gene", cell_type: "둘러보기 · Cell Type", tissue: "둘러보기 · Tissue" };
+  $("browse-title").textContent = labels[type] || "목록";
+  $("browse-eyebrow").textContent = eyebrows[type] || "Browse";
+  $("crumb-label").textContent = labels[type] || "Browse";
+  document.title = `${labels[type] || "Browse"} · Biology Second Brain`;
+  try {
+    const remote = await window.BioDB.fetchAll();
+    const graph = wiki.buildKnowledgeGraph(window.WIKI_DATA, { remoteData: remote, includeLocal: false });
+    const collections = { disease: graph.diseases, gene: graph.genes, cell_type: graph.cellTypes, tissue: graph.tissues };
+    ALL_ITEMS = (collections[type] || []).slice().sort((a, b) => wiki.recencyFor(b, graph) - wiki.recencyFor(a, graph));
+    render();
+  } catch (e) {
+    $("browse-list").innerHTML = `<div class="error-card">Supabase 데이터를 불러오지 못했습니다: ${wiki.escapeHtml(e.message)}</div>`;
+  }
+})();
+$("browse-filter").addEventListener("input", render);
+</script>
+</body>
+</html>

@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Map · Biology Second Brain</title>
+<link rel="stylesheet" href="../assets/style.css" />
+<link rel="stylesheet" href="../assets/graph-view.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ map</span></div>
+  <nav class="top-links">
+    <a href="../index.html">Home</a>
+    <a href="library.html">Library</a>
+    <a href="graph.html" style="color:var(--text);font-weight:600;">Map</a>
+    <a href="add.html" data-member-plus>+ Add</a>
+    <a href="users.html" data-owner-only>Users</a>
+  </nav>
+</header>
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
+
+<div class="map-shell">
+  <aside class="map-sidebar">
+    <div class="search-wrap" style="position:relative;margin-bottom:6px;">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search-input" type="text" placeholder="검색해서 항목으로 이동" autocomplete="off" />
+      </div>
+      <div id="search-results" class="search-results"></div>
+    </div>
+
+    <h3>레이어</h3>
+    <div id="layer-filters"></div>
+
+    <h3>Disease 필터</h3>
+    <div class="map-actions">
+      <button id="disease-all">전체 선택</button>
+      <button id="disease-none">전체 해제</button>
+    </div>
+    <div id="disease-filters"></div>
+
+    <h3>범례 · 노드</h3>
+    <div class="legend-item"><span class="type-dot disease"></span>Disease</div>
+    <div class="legend-item"><span class="type-dot gene"></span>Gene</div>
+    <div class="legend-item"><span class="type-dot cell_type"></span>Cell Type</div>
+    <div class="legend-item"><span class="type-dot tissue"></span>Tissue</div>
+    <div class="legend-item"><span class="type-dot paper"></span>Paper (실선)</div>
+    <div class="legend-item"><span class="type-dot knowledge"></span>Knowledge (점선)</div>
+
+    <h3>범례 · 연결</h3>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-disease)"></span>Disease 연결</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-gene)"></span>Gene 연결</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-cell)"></span>Cell Type 연결</div>
+    <div class="legend-item"><span class="legend-line" style="background:var(--accent-tissue)"></span>Tissue 연결</div>
+  </aside>
+
+  <main class="map-main">
+    <div id="cy"></div>
+    <div id="map-empty" style="display:none;">불러올 데이터가 없습니다. Library에서 Paper를 먼저 추가해보세요.</div>
+
+    <div class="map-canvas-controls">
+      <button id="fit-btn" class="ghost-btn" style="font-family:var(--font-body);font-size:12px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text-muted);cursor:pointer;">화면 맞춤</button>
+      <button id="reset-btn" class="ghost-btn" style="font-family:var(--font-body);font-size:12px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--text-muted);cursor:pointer;">선택 초기화</button>
+    </div>
+
+    <div id="map-detail">
+      <button class="close-btn" id="detail-close">닫기</button>
+      <span class="type-badge" id="detail-badge"></span>
+      <h2 id="detail-title"></h2>
+      <div class="map-meta" id="detail-meta"></div>
+      <div class="map-desc" id="detail-desc"></div>
+
+      <div class="block" id="pathway-block" style="display:none;">
+        <h4>Pathway</h4>
+        <div id="detail-pathway"></div>
+      </div>
+
+      <div class="block" id="chips-block">
+        <h4>연결된 항목</h4>
+        <div id="detail-chips"></div>
+      </div>
+
+      <div class="block" id="related-block" style="display:none;">
+        <h4>관련 Paper / Knowledge</h4>
+        <div id="detail-related"></div>
+      </div>
+
+      <a href="#" id="detail-open-full" class="open-full">전체 정보 보기 →</a>
+    </div>
+  </main>
+</div>
+
+<footer>Paper와 Knowledge가 공유하는 Disease · Gene · Cell Type · Tissue를 기준으로 자동 연결됩니다.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/supabase-config.js"></script>
+<script src="../assets/auth-gate.js"></script>
+<script src="../assets/data.js"></script>
+<script src="../assets/search.js"></script>
+<script src="../assets/supabase-db.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script>
+const wiki = window.BiologyWiki;
+const $ = (id) => document.getElementById(id);
+const norm = (s) => String(s || "").trim().toLowerCase();
+
+let GRAPH = null;
+let cy = null;
+const conceptTypes = ["disease", "gene", "cell_type", "tissue"];
+const conceptCollectionKey = { disease: "diseases", gene: "genes", cell_type: "cellTypes", tissue: "tissues" };
+const TYPE_LABEL_KO = { disease: "Disease", gene: "Gene", cell_type: "Cell Type", tissue: "Tissue", paper: "Paper", knowledge: "Knowledge" };
+
+function findEntityByName(type, name) {
+  const list = GRAPH[conceptCollectionKey[type]] || [];
+  const n = norm(name);
+  return list.find((e) => norm(e.displayName || e.title) === n);
+}
+
+/* ---------- build cytoscape elements straight from the live GRAPH ---------- */
+function buildElements(graph) {
+  const nodes = [];
+  const edges = [];
+  const degree = {};
+  const bump = (id) => { degree[id] = (degree[id] || 0) + 1; };
+
+  conceptTypes.forEach((type) => {
+    (graph[conceptCollectionKey[type]] || []).forEach((e) => {
+      nodes.push({ data: { id: `${type}__${e.id}`, label: e.displayName || e.title, ntype: type, refType: type, refId: e.id } });
+    });
+  });
+
+  function linkPaperLike(item, ntype) {
+    const nodeId = `${ntype}__${item.id}`;
+    nodes.push({ data: { id: nodeId, label: item.title || item.displayName, ntype, refType: ntype, refId: item.id } });
+    const fields = ntype === "paper"
+      ? { disease: item.disease, gene: item.genes, cell_type: item.cellTypes, tissue: item.tissues }
+      : { disease: item.relatedDiseases, gene: item.relatedGenes, cell_type: item.relatedCellTypes, tissue: item.relatedTissues };
+    conceptTypes.forEach((type) => {
+      (fields[type] || []).forEach((name) => {
+        const entity = findEntityByName(type, name);
+        if (!entity) return;
+        const targetId = `${type}__${entity.id}`;
+        bump(targetId);
+        edges.push({ data: { id: `e_${nodeId}_${targetId}`, source: nodeId, target: targetId, etype: type } });
+      });
+    });
+  }
+
+  (graph.papers || []).forEach((p) => linkPaperLike(p, "paper"));
+  (graph.knowledge || []).forEach((k) => linkPaperLike(k, "knowledge"));
+
+  nodes.forEach((n) => {
+    if (conceptTypes.includes(n.data.ntype)) n.data.degree = degree[n.data.id] || 1;
+  });
+
+  return [...nodes, ...edges];
+}
+
+function buildStylesheet() {
+  return [
+    {
+      selector: 'node[ntype = "disease"], node[ntype = "gene"], node[ntype = "cell_type"], node[ntype = "tissue"]',
+      style: {
+        shape: "ellipse",
+        width: "mapData(degree, 1, 10, 16, 46)",
+        height: "mapData(degree, 1, 10, 16, 46)",
+        "background-color": "#fff",
+        "border-width": 2.4,
+        label: "data(label)",
+        "font-size": 10,
+        "font-family": "Inter, sans-serif",
+        color: "#5f6368",
+        "text-valign": "bottom",
+        "text-margin-y": 5,
+        "text-wrap": "wrap",
+        "text-max-width": 76,
+      },
+    },
+    { selector: 'node[ntype = "disease"]', style: { "border-color": "var(--accent-disease)", "background-color": "#eeedfc" } },
+    { selector: 'node[ntype = "gene"]', style: { "border-color": "var(--accent-gene)", "background-color": "#faf1e2" } },
+    { selector: 'node[ntype = "cell_type"]', style: { "border-color": "var(--accent-cell)", "background-color": "#e7f5f3" } },
+    { selector: 'node[ntype = "tissue"]', style: { "border-color": "var(--accent-tissue)", "background-color": "#f4eef6" } },
+    {
+      selector: 'node[ntype = "paper"]',
+      style: {
+        shape: "round-rectangle",
+        width: 16, height: 12,
+        "background-color": "var(--accent-paper)",
+        "background-opacity": 0.85,
+        "border-width": 0,
+        label: "",
+      },
+    },
+    {
+      selector: 'node[ntype = "knowledge"]',
+      style: {
+        shape: "round-rectangle",
+        width: 16, height: 12,
+        "background-color": "#fff",
+        "border-width": 1.8,
+        "border-color": "var(--accent-knowledge)",
+        "border-style": "dashed",
+        label: "",
+      },
+    },
+    { selector: 'edge[etype = "disease"]', style: { width: 1.3, "line-color": "var(--accent-disease)", opacity: 0.45, "curve-style": "bezier" } },
+    { selector: 'edge[etype = "gene"]', style: { width: 1.3, "line-color": "var(--accent-gene)", opacity: 0.45, "curve-style": "bezier" } },
+    { selector: 'edge[etype = "cell_type"]', style: { width: 1.3, "line-color": "var(--accent-cell)", opacity: 0.45, "curve-style": "bezier" } },
+    { selector: 'edge[etype = "tissue"]', style: { width: 1.3, "line-color": "var(--accent-tissue)", opacity: 0.45, "curve-style": "bezier" } },
+    { selector: ".dimmed", style: { opacity: 0.06 } },
+    { selector: ".highlighted", style: { opacity: 1 } },
+    { selector: 'node.highlighted[ntype = "paper"], node.highlighted[ntype = "knowledge"]', style: { width: 22, height: 16 } },
+  ];
+}
+
+/* ---------- sidebar: layer + disease filters ---------- */
+function buildSidebar(graph) {
+  const layerBox = $("layer-filters");
+  const layers = [
+    { id: "disease", label: "Disease" },
+    { id: "gene", label: "Gene" },
+    { id: "cell_type", label: "Cell Type" },
+    { id: "tissue", label: "Tissue" },
+    { id: "paper", label: "Paper" },
+    { id: "knowledge", label: "Knowledge" },
+  ];
+  layerBox.innerHTML = layers.map((l) => `
+    <label class="layer-row">
+      <input type="checkbox" checked data-layer="${l.id}">
+      <span class="type-dot ${l.id}"></span><span>${l.label}</span>
+    </label>`).join("");
+  layerBox.addEventListener("change", applyFilters);
+
+  const diseaseBox = $("disease-filters");
+  diseaseBox.innerHTML = graph.diseases.map((d) => `
+    <label class="disease-row">
+      <input type="checkbox" checked data-disease="${wiki.escapeHtml(d.displayName)}">
+      <span class="type-dot disease"></span><span>${wiki.escapeHtml(d.displayName)}</span>
+    </label>`).join("") || `<p style="color:var(--text-faint);font-size:12.5px;">등록된 Disease가 없습니다.</p>`;
+  diseaseBox.addEventListener("change", applyFilters);
+
+  $("disease-all").addEventListener("click", () => { diseaseBox.querySelectorAll("input").forEach((i) => (i.checked = true)); applyFilters(); });
+  $("disease-none").addEventListener("click", () => { diseaseBox.querySelectorAll("input").forEach((i) => (i.checked = false)); applyFilters(); });
+}
+
+function applyFilters() {
+  const activeLayers = new Set([...document.querySelectorAll("#layer-filters input:checked")].map((i) => i.dataset.layer));
+  const activeDiseases = new Set([...document.querySelectorAll("#disease-filters input:checked")].map((i) => norm(i.dataset.disease)));
+  const allDiseasesChecked = document.querySelectorAll("#disease-filters input").length === document.querySelectorAll("#disease-filters input:checked").length;
+
+  cy.nodes().forEach((n) => {
+    const ntype = n.data("ntype");
+    let visible = activeLayers.has(ntype);
+    if (visible && (ntype === "paper" || ntype === "knowledge") && !allDiseasesChecked) {
+      const item = ntype === "paper"
+        ? GRAPH.papers.find((p) => p.id === n.data("refId"))
+        : GRAPH.knowledge.find((k) => k.id === n.data("refId"));
+      const names = ntype === "paper" ? (item && item.disease) : (item && item.relatedDiseases);
+      visible = !!(names && names.some((nm) => activeDiseases.has(norm(nm))));
+    }
+    n.style("display", visible ? "element" : "none");
+  });
+  cy.edges().forEach((e) => {
+    const hidden = e.source().style("display") === "none" || e.target().style("display") === "none";
+    e.style("display", hidden ? "none" : "element");
+  });
+}
+
+/* ---------- detail panel ---------- */
+function clearHighlight() { cy.elements().removeClass("dimmed highlighted"); }
+function closeDetail() { $("map-detail").classList.remove("open"); }
+
+function focusNode(node) {
+  clearHighlight();
+  const neighborhood = node.closedNeighborhood();
+  cy.elements().addClass("dimmed");
+  neighborhood.removeClass("dimmed").addClass("highlighted");
+}
+
+function chipButton(type, name) {
+  return `<button class="chip chip-btn" type="button" data-chip-type="${type}" data-chip-name="${wiki.escapeHtml(name)}" style="cursor:pointer;">
+    <span class="dot ${type === "knowledge" ? "paper" : type}"></span>${wiki.escapeHtml(name)}
+  </button>`;
+}
+
+function pathwayChain(line) {
+  const steps = wiki.splitPathwaySteps(line);
+  if (!steps.length) return "";
+  return `<div class="pathway-chain">${steps.map((s, i) => `${i > 0 ? '<span class="pathway-arrow">→</span>' : ""}<span class="pathway-step">${wiki.escapeHtml(s)}</span>`).join("")}</div>`;
+}
+
+function showPaperLikeDetail(node) {
+  const ntype = node.data("ntype");
+  const item = ntype === "paper"
+    ? GRAPH.papers.find((p) => p.id === node.data("refId"))
+    : GRAPH.knowledge.find((k) => k.id === node.data("refId"));
+  if (!item) return;
+
+  $("detail-badge").textContent = TYPE_LABEL_KO[ntype];
+  $("detail-title").textContent = item.title || item.displayName;
+  $("detail-meta").textContent = ntype === "paper"
+    ? [item.journal, item.year, item.readCycle].filter(Boolean).join(" · ")
+    : [item.category, item.originalSource, item.readCycle].filter(Boolean).join(" · ");
+  const descLines = ntype === "paper" ? (item.summary || []) : (item.knowledge || []);
+  $("detail-desc").innerHTML = descLines.slice(0, 2).map((s) => `<p style="margin:0 0 8px;">${wiki.escapeHtml(s)}</p>`).join("");
+
+  const pathway = ntype === "paper" ? (item.pathway || []) : [];
+  $("pathway-block").style.display = pathway.length ? "" : "none";
+  $("detail-pathway").innerHTML = pathway.map(pathwayChain).join("");
+
+  const chipFields = ntype === "paper"
+    ? { disease: item.disease, gene: item.genes, cell_type: item.cellTypes, tissue: item.tissues }
+    : { disease: item.relatedDiseases, gene: item.relatedGenes, cell_type: item.relatedCellTypes, tissue: item.relatedTissues };
+  const chipHtml = conceptTypes.map((t) => (chipFields[t] || []).map((n) => chipButton(t, n)).join("")).join("");
+  $("detail-chips").innerHTML = chipHtml || `<p style="color:var(--text-faint);font-size:13px;">연결된 항목이 없습니다.</p>`;
+
+  $("related-block").style.display = "none";
+  $("detail-open-full").href = wiki.entityUrl(item, "../");
+  $("map-detail").classList.add("open");
+}
+
+function showConceptDetail(node) {
+  const type = node.data("ntype");
+  const entity = findEntityByName(type, node.data("label")) || (GRAPH[conceptCollectionKey[type]] || []).find((e) => e.id === node.data("refId"));
+  if (!entity) return;
+  const related = wiki.relatedFor(entity, GRAPH);
+
+  $("detail-badge").textContent = TYPE_LABEL_KO[type];
+  $("detail-title").textContent = entity.displayName || entity.title;
+  $("detail-meta").textContent = entity.fullName || "";
+  $("detail-desc").innerHTML = entity.description ? `<p style="margin:0;">${wiki.escapeHtml(entity.description)}</p>` : "";
+
+  $("pathway-block").style.display = "none";
+
+  const otherTypes = conceptTypes.filter((t) => t !== type);
+  const relFields = { disease: related.diseases, gene: related.genes, cell_type: related.cellTypes, tissue: related.tissues };
+  const chipHtml = otherTypes.map((t) => (relFields[t] || []).map((n) => chipButton(t, n)).join("")).join("");
+  $("detail-chips").innerHTML = chipHtml || `<p style="color:var(--text-faint);font-size:13px;">연결된 항목이 없습니다.</p>`;
+
+  const relatedItems = [...related.papers, ...related.knowledge];
+  $("related-block").style.display = relatedItems.length ? "" : "none";
+  $("detail-related").innerHTML = relatedItems.map((it) =>
+    `<button class="related-paper" type="button" data-focus-type="${it.type}" data-focus-id="${wiki.escapeHtml(it.id)}" style="width:100%;text-align:left;cursor:pointer;">${wiki.escapeHtml(it.title || it.displayName)}</button>`
+  ).join("");
+
+  $("detail-open-full").href = wiki.entityUrl(entity, "../");
+  $("map-detail").classList.add("open");
+}
+
+function focusEntityByName(type, name) {
+  const entity = findEntityByName(type, name);
+  if (!entity) return;
+  const node = cy.getElementById(`${type}__${entity.id}`);
+  if (!node || node.empty()) return;
+  focusNode(node);
+  showConceptDetail(node);
+  cy.animate({ center: { eles: node } }, { duration: 250 });
+}
+function focusItemById(type, id) {
+  const node = cy.getElementById(`${type}__${id}`);
+  if (!node || node.empty()) return;
+  focusNode(node);
+  showPaperLikeDetail(node);
+  cy.animate({ center: { eles: node } }, { duration: 250 });
+}
+
+document.addEventListener("click", (e) => {
+  const chipBtn = e.target.closest(".chip-btn");
+  if (chipBtn) { focusEntityByName(chipBtn.dataset.chipType, chipBtn.dataset.chipName); return; }
+  const relBtn = e.target.closest("[data-focus-id]");
+  if (relBtn) { focusItemById(relBtn.dataset.focusType, relBtn.dataset.focusId); return; }
+});
+$("detail-close").addEventListener("click", () => { closeDetail(); clearHighlight(); });
+
+/* ---------- init ---------- */
+(async function init() {
+  const auth = await window.AuthGate.requireAuth({ basePath: "../" });
+  if (!auth) return;
+  try {
+    const remote = await window.BioDB.fetchAll();
+    GRAPH = wiki.buildKnowledgeGraph(window.WIKI_DATA, { remoteData: remote, includeLocal: false });
+    window.initWikiSearch({ inputId: "search-input", resultsId: "search-results", basePath: "../", graph: GRAPH });
+
+    const elements = buildElements(GRAPH);
+    if (!GRAPH.papers.length && !GRAPH.knowledge.length) {
+      $("map-empty").style.display = "flex";
+      return;
+    }
+
+    buildSidebar(GRAPH);
+
+    cy = cytoscape({
+      container: $("cy"),
+      elements,
+      style: buildStylesheet(),
+      layout: { name: "cose", animate: false, padding: 40, nodeRepulsion: 9000, idealEdgeLength: 90 },
+      minZoom: 0.2,
+      maxZoom: 3,
+    });
+
+    cy.on("tap", 'node[ntype = "paper"], node[ntype = "knowledge"]', (evt) => { focusNode(evt.target); showPaperLikeDetail(evt.target); });
+    cy.on("tap", 'node[ntype = "disease"], node[ntype = "gene"], node[ntype = "cell_type"], node[ntype = "tissue"]', (evt) => { focusNode(evt.target); showConceptDetail(evt.target); });
+    cy.on("tap", (evt) => { if (evt.target === cy) { clearHighlight(); closeDetail(); } });
+
+    $("fit-btn").addEventListener("click", () => cy.fit(undefined, 40));
+    $("reset-btn").addEventListener("click", () => { clearHighlight(); closeDetail(); cy.fit(undefined, 40); });
+  } catch (e) {
+    $("map-empty").style.display = "flex";
+    $("map-empty").textContent = "Supabase 데이터를 불러오지 못했습니다: " + e.message;
+  }
+})();
+</script>
+</body>
+</html>

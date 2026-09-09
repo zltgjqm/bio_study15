@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Library · Biology Second Brain</title>
+<link rel="stylesheet" href="../assets/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ library</span></div>
+  <nav class="top-links">
+    <a href="../index.html">Home</a>
+    <a href="graph.html">Map</a>
+    <a href="add.html" data-member-plus>+ Add</a>
+    <a href="users.html" data-owner-only>Users</a>
+  </nav>
+</header>
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
+<main class="shell">
+  <section class="hero" style="padding-bottom:26px;">
+    <div class="hero-eyebrow">Supabase Library · role based</div>
+    <h1>Library</h1>
+    <p>현재 계정 권한으로 볼 수 있는 Paper와 Owner Knowledge를 관리합니다. Owner는 여기서 pending paper를 승인할 수 있어요.</p>
+    <div class="search-wrap">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="library-filter" type="text" placeholder="Paper, Disease, Gene, Tag 검색" autocomplete="off" />
+      </div>
+    </div>
+  </section>
+
+  <div class="app-banner">
+    <div class="mini-panel"><h3>Visible Data</h3><p id="library-counts">불러오는 중...</p></div>
+    <a class="mini-panel" href="add.html" data-member-plus><h3>새 Paper 추가 →</h3><p>Member는 추가 가능, Viewer는 읽기 전용입니다.</p></a>
+  </div>
+
+  <div class="admin-panel" id="pending-panel" data-owner-only>
+    <h3>Review Queue</h3>
+    <div id="pending-list" class="paper-list"><div class="loading-card">불러오는 중...</div></div>
+  </div>
+
+  <div class="section-label">Papers</div>
+  <div class="paper-list" id="paper-list"><div class="loading-card">Supabase에서 불러오는 중...</div></div>
+
+  <div class="section-label" data-owner-only>Owner Knowledge</div>
+  <div class="paper-list" id="knowledge-list" data-owner-only></div>
+</main>
+<footer>권한은 Supabase RLS로 적용됩니다.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/supabase-config.js"></script>
+<script src="../assets/auth-gate.js"></script>
+<script src="../assets/data.js"></script>
+<script src="../assets/search.js"></script>
+<script src="../assets/supabase-db.js"></script>
+<script>
+const wiki = window.BiologyWiki;
+const $ = (id) => document.getElementById(id);
+let AUTH = null;
+let REMOTE = { papers: [], knowledge: [] };
+let PROFILES = [];
+
+function textFor(item) {
+  return [item.title, item.category, item.journal, item.year, item.authors, item.originalSource, ...(item.disease || []), ...(item.genes || []), ...(item.cellTypes || []), ...(item.tissues || []), ...(item.relatedDiseases || []), ...(item.relatedGenes || []), ...(item.relatedCellTypes || []), ...(item.relatedTissues || []), ...(item.tags || []), ...Object.values(item.diseaseNotes || {}).flat()].join(" ").toLowerCase();
+}
+function meta(items) { return items && items.length ? items.map((x) => `<span class="tag">${wiki.escapeHtml(x)}</span>`).join("") : ""; }
+function cycleTag(cycle) { return cycle ? `<span class="cycle-badge">${wiki.escapeHtml(cycle)}</span>` : ""; }
+function badge(value, cls) { return value ? `<span class="${cls} ${wiki.escapeHtml(value)}">${wiki.escapeHtml(value)}</span>` : ""; }
+function profileEmail(id) { return (PROFILES.find((p) => p.id === id)?.email || "").split("@")[0] || ""; }
+
+async function reloadData() {
+  REMOTE = await window.BioDB.fetchAll();
+  if (AUTH.isOwner) PROFILES = await window.BioDB.fetchProfiles();
+  render();
+}
+async function deleteItem(type, id, title) {
+  if (!confirm(`삭제할까요?\n\n${title}\n\nSupabase에서 삭제되며 되돌릴 수 없습니다.`)) return;
+  try {
+    if (type === "paper") await window.BioDB.deletePaper(id);
+    else await window.BioDB.deleteKnowledge(id);
+    await reloadData();
+  } catch (e) { alert("삭제 실패: " + e.message); }
+}
+async function approvePaper(id) {
+  try { await window.BioDB.setPaperFields(id, { reviewStatus: "approved" }); await reloadData(); }
+  catch (e) { alert("승인 실패: " + e.message); }
+}
+async function rejectPaper(id) {
+  try { await window.BioDB.setPaperFields(id, { reviewStatus: "rejected" }); await reloadData(); }
+  catch (e) { alert("거절 실패: " + e.message); }
+}
+async function changeVisibility(id, value) {
+  try { await window.BioDB.setPaperFields(id, { visibility: value }); await reloadData(); }
+  catch (e) { alert("변경 실패: " + e.message); }
+}
+function paperCard(p, compact = false) {
+  const canEdit = window.AuthGate.canEditPaper(AUTH, p);
+  const canDelete = window.AuthGate.canDeletePaper(AUTH);
+  const ownerControls = AUTH.isOwner ? `<select class="inline-select" onchange="changeVisibility('${wiki.escapeHtml(p.id)}', this.value)"><option value="public" ${p.visibility === "public" ? "selected" : ""}>public</option><option value="members" ${p.visibility === "members" ? "selected" : ""}>members</option><option value="private" ${p.visibility === "private" ? "selected" : ""}>private</option></select>` : "";
+  const reviewControls = AUTH.isOwner && p.reviewStatus === "pending_review" ? `<button class="btn secondary" onclick="approvePaper('${wiki.escapeHtml(p.id)}')">Approve</button><button class="btn danger" onclick="rejectPaper('${wiki.escapeHtml(p.id)}')">Reject</button>` : "";
+  return `<div class="paper-card manage-card">
+    <div class="paper-main">
+      <p class="paper-title">${wiki.escapeHtml(p.title)}</p>
+      <div class="paper-meta">${cycleTag(p.readCycle)}${badge(p.visibility, "visibility-badge")}${badge(p.reviewStatus, "status-badge")}<span>${wiki.escapeHtml(p.journal || "Journal 없음")}</span><span>·</span><span>${wiki.escapeHtml(p.year || "Year 없음")}</span>${profileEmail(p.ownerId) ? `<span>· by ${wiki.escapeHtml(profileEmail(p.ownerId))}</span>` : ""}</div>
+      <div class="tag-row">${meta(p.tags)}${meta(p.disease)}${meta(p.genes)}${meta(p.cellTypes)}</div>
+    </div>
+    <div class="manage-actions">
+      <a class="btn secondary" href="${wiki.entityUrl(p, "../")}">Open</a>
+      ${canEdit ? `<a class="btn secondary" href="add.html?type=paper&edit=${encodeURIComponent(p.id)}">Edit</a>` : ""}
+      ${ownerControls}
+      ${reviewControls}
+      ${canDelete ? `<button class="btn danger" onclick="deleteItem('paper','${wiki.escapeHtml(p.id)}','${wiki.escapeHtml(p.title)}')">Delete</button>` : ""}
+    </div>
+  </div>`;
+}
+function knowledgeCard(k) {
+  return `<div class="paper-card manage-card">
+    <div class="paper-main">
+      <p class="paper-title">${wiki.escapeHtml(k.title)}</p>
+      <div class="paper-meta">${cycleTag(k.readCycle)}<span>${wiki.escapeHtml(k.category || "Knowledge")}</span><span>·</span><span>${wiki.escapeHtml(k.originalSource || "개인 메모")}</span></div>
+      <div class="tag-row">${meta(k.tags)}${meta(k.relatedDiseases)}${meta(k.relatedGenes)}</div>
+    </div>
+    <div class="manage-actions">
+      <a class="btn secondary" href="${wiki.entityUrl(k, "../")}">Open</a>
+      <a class="btn secondary" href="add.html?type=knowledge&edit=${encodeURIComponent(k.id)}">Edit</a>
+      <button class="btn danger" onclick="deleteItem('knowledge','${wiki.escapeHtml(k.id)}','${wiki.escapeHtml(k.title)}')">Delete</button>
+    </div>
+  </div>`;
+}
+function render() {
+  const q = $("library-filter").value.trim().toLowerCase();
+  const papers = (REMOTE.papers || []).filter((p) => !q || textFor(p).includes(q)).sort((a,b) => Number(b.addedAt||0) - Number(a.addedAt||0));
+  const knowledge = (REMOTE.knowledge || []).filter((k) => !q || textFor(k).includes(q)).sort((a,b) => Number(b.addedAt||0) - Number(a.addedAt||0));
+  $("library-counts").innerHTML = `<b>${REMOTE.papers.length}</b> Paper · <b>${REMOTE.knowledge.length}</b> Owner Knowledge visible`;
+  $("paper-list").innerHTML = papers.length ? papers.map((p) => paperCard(p)).join("") : `<div class="paper-card"><div class="paper-main"><p class="paper-title">표시할 Paper가 없습니다.</p><div class="paper-meta"><span>+ Add에서 Paper를 저장하세요.</span></div></div></div>`;
+  const kbox = $("knowledge-list");
+  if (kbox) kbox.innerHTML = knowledge.length ? knowledge.map(knowledgeCard).join("") : `<div class="paper-card"><div class="paper-main"><p class="paper-title">Owner Knowledge가 없습니다.</p></div></div>`;
+  if (AUTH.isOwner) {
+    const pending = (REMOTE.papers || []).filter((p) => p.reviewStatus === "pending_review").sort((a,b) => Number(b.addedAt||0) - Number(a.addedAt||0));
+    $("pending-list").innerHTML = pending.length ? pending.map((p) => paperCard(p, true)).join("") : `<div class="loading-card">검토 대기 논문이 없습니다.</div>`;
+  }
+}
+$("library-filter").addEventListener("input", render);
+(async function init() {
+  AUTH = await window.AuthGate.requireAuth({ basePath: "../" });
+  if (!AUTH) return;
+  try { await reloadData(); }
+  catch (e) { $("paper-list").innerHTML = `<div class="error-card">Supabase 데이터를 불러오지 못했습니다: ${wiki.escapeHtml(e.message)}</div>`; }
+})();
+</script>
+</body>
+</html>
