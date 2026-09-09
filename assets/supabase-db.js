@@ -245,6 +245,105 @@
     return wiki().buildKnowledgeGraph(window.WIKI_DATA || {}, { remoteData, includeLocal });
   }
 
+  /* ---------- diseases: 암 8종 허브 뷰용 큐레이션 데이터 ---------- */
+  function rowToDisease(row) {
+    return {
+      id: row.id,
+      name: row.name || "",
+      description: row.description || "",
+      keyGenes: asJsonArray(row.key_genes),
+      keyMechanisms: asJsonArray(row.key_mechanisms),
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function diseaseToRow(item, auth, isEdit = false) {
+    const row = {
+      id: isEdit ? item.id : String(item.id || "").trim() || newId("disease"),
+      name: String(item.name || "").trim(),
+      description: item.description || "",
+      key_genes: asJsonArray(item.keyGenes),
+      key_mechanisms: asJsonArray(item.keyMechanisms),
+    };
+    if (!isEdit) row.created_by = auth?.user?.id;
+    return row;
+  }
+
+  async function fetchDiseases() {
+    const { data, error } = await client().from("diseases").select("*").order("name", { ascending: true });
+    if (error) throw error;
+    return (data || []).map(rowToDisease);
+  }
+
+  async function saveDisease(item, auth, isEdit = false) {
+    const supabase = client();
+    const row = diseaseToRow(item, auth, isEdit);
+    const query = isEdit
+      ? supabase.from("diseases").update(row).eq("id", item.id).select().single()
+      : supabase.from("diseases").insert(row).select().single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return rowToDisease(data);
+  }
+
+  async function deleteDisease(id) {
+    const { error } = await client().from("diseases").delete().eq("id", id);
+    if (error) throw error;
+    return true;
+  }
+
+  /* ---------- disease_links: 사람이 직접 만든 암-암 커스텀 관계 ---------- */
+  function rowToDiseaseLink(row) {
+    return {
+      id: row.id,
+      diseaseAId: row.disease_a_id,
+      diseaseBId: row.disease_b_id,
+      relationNote: row.relation_note || "",
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function diseaseLinkToRow(item, auth) {
+    // disease_a_id < disease_b_id로 항상 정렬해서 저장 (A-B / B-A 중복 방지, DB check 제약과 맞춤)
+    const [a, b] = [String(item.diseaseAId || ""), String(item.diseaseBId || "")].sort();
+    return {
+      id: newId("dlink"),
+      disease_a_id: a,
+      disease_b_id: b,
+      relation_note: String(item.relationNote || "").trim(),
+      created_by: auth?.user?.id,
+    };
+  }
+
+  async function fetchDiseaseLinks() {
+    const { data, error } = await client().from("disease_links").select("*");
+    if (error) throw error;
+    return (data || []).map(rowToDiseaseLink);
+  }
+
+  async function saveDiseaseLink(item, auth) {
+    const supabase = client();
+    const row = diseaseLinkToRow(item, auth);
+    const { data, error } = await supabase.from("disease_links").insert(row).select().single();
+    if (error) throw error;
+    return rowToDiseaseLink(data);
+  }
+
+  async function deleteDiseaseLink(id) {
+    const { error } = await client().from("disease_links").delete().eq("id", id);
+    if (error) throw error;
+    return true;
+  }
+
+  async function fetchHubData() {
+    const [diseasesRes, linksRes] = await Promise.all([fetchDiseases(), fetchDiseaseLinks()]);
+    return { diseases: diseasesRes, links: linksRes };
+  }
+
   window.BioDB = {
     newId,
     rowToPaper,
@@ -261,5 +360,12 @@
     addNote,
     deleteNote,
     buildGraph,
+    fetchDiseases,
+    saveDisease,
+    deleteDisease,
+    fetchDiseaseLinks,
+    saveDiseaseLink,
+    deleteDiseaseLink,
+    fetchHubData,
   };
 })();
