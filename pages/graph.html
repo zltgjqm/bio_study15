@@ -1,247 +1,145 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Map · Biology Second Brain</title>
-<link rel="stylesheet" href="../assets/style.css" />
-<link rel="stylesheet" href="../assets/graph-view.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map & Knowledge Graph — Biology Second Brain</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/graph-view.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/supabase-config.js"></script>
+  <script src="../assets/data.js"></script>
+  <script src="../assets/supabase-db.js"></script>
+  <script src="../assets/auth-gate.js"></script>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ map</span></div>
-  <nav class="top-links">
-    <a href="../index.html">Home</a>
-    <a href="library.html">Library</a>
-    <a href="graph.html">Map</a>
-    <a href="add.html" data-member-plus>+ Add</a>
-    <a href="users.html" data-owner-only>Users</a>
-  </nav>
-</header>
-<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
-
-<main class="shell">
-  <section class="hero" style="padding-bottom:20px;">
-    <div class="hero-eyebrow">Disease Map</div>
-    <h1>Map</h1>
-    <p>암 종별 주요 유전자, 메커니즘 및 커스텀 연결 관계를 시각적으로 확인합니다. 카드를 클릭하면 상세 정보가 열립니다.</p>
-  </section>
-
-  <div id="error-message" class="error-card" style="display:none; margin-bottom:18px;"></div>
-
-  <div class="map-wrap" id="map-wrap">
-    <svg id="link-overlay"></svg>
-    <div id="map-loading" class="loading-card">Supabase에서 불러오는 중...</div>
-    <div class="disease-grid" id="disease-grid" style="display:none;"></div>
-    <div id="map-empty" style="display:none;">
-      등록된 Disease가 없습니다.<br />
-      <a href="add.html" data-member-plus>Add 페이지</a>에서 Paper를 저장하거나 Map에 직접 추가해 보세요.
+  <header class="top-nav">
+    <div class="nav-container">
+      <a href="../index.html" class="logo">Biology Second Brain</a>
+      <nav class="nav-links">
+        <a href="browse.html">Browse</a>
+        <a href="library.html">Library</a>
+        <a href="graph.html" class="active">Map</a>
+        <a href="add.html">Add New</a>
+        <a href="users.html" id="nav-users" style="display:none;">Users</a>
+      </nav>
+      <div class="user-menu" id="user-menu"></div>
     </div>
-  </div>
-</main>
-<footer>권한은 Supabase RLS로 적용됩니다.</footer>
+  </header>
 
-<div id="map-detail">
-  <button class="close-btn" id="detail-close">닫기 ✕</button>
-  <div id="detail-body"></div>
-</div>
+  <main class="graph-container">
+    <section class="graph-header">
+      <h1>Disease Map & Knowledge Network</h1>
+      <p>암 종별 주요 유전자, 메커니즘 및 커스텀 연결 관계를 시각적으로 확인합니다.</p>
+    </section>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="../assets/supabase-config.js"></script>
-<script src="../assets/auth-gate.js"></script>
-<script src="../assets/data.js"></script>
-<script src="../assets/supabase-db.js"></script>
-<script>
-const $ = (id) => document.getElementById(id);
-const esc = (v) => window.AuthGate.escapeHtml(v);
-let AUTH = null;
-let DISEASES = [];
-let LINKS = [];
-let PAPERS = [];
-let ACTIVE_ID = null;
+    <div id="error-message" class="error-banner" style="display: none;"></div>
 
-function norm(v) { return String(v || "").trim().toLowerCase(); }
+    <div class="graph-layout">
+      <div id="graph-canvas" class="graph-canvas">
+        <div id="loading-spinner" class="loading-state">데이터를 불러오는 중입니다...</div>
+      </div>
+      <aside class="graph-sidebar" id="graph-sidebar">
+        <h3>상세 정보</h3>
+        <div id="sidebar-content">노드를 선택하면 상세 정보가 표시됩니다.</div>
+      </aside>
+    </div>
+  </main>
 
-function linksFor(diseaseId) {
-  return LINKS.filter((l) => l.diseaseAId === diseaseId || l.diseaseBId === diseaseId);
-}
-function otherId(link, diseaseId) {
-  return link.diseaseAId === diseaseId ? link.diseaseBId : link.diseaseAId;
-}
-function diseaseById(id) { return DISEASES.find((d) => d.id === id); }
-function papersFor(diseaseName) {
-  const target = norm(diseaseName);
-  return PAPERS.filter((p) => (p.disease || []).some((d) => norm(d) === target));
-}
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const canvasEl = document.getElementById("graph-canvas");
+      const sidebarEl = document.getElementById("sidebar-content");
+      const errorEl = document.getElementById("error-message");
+      const spinnerEl = document.getElementById("loading-spinner");
 
-/* ---------- Render grid ---------- */
-function renderGrid() {
-  const grid = $("disease-grid");
-  if (!DISEASES.length) {
-    $("map-empty").style.display = "block";
-    grid.style.display = "none";
-    return;
-  }
-  $("map-empty").style.display = "none";
-  grid.style.display = "grid";
-
-  grid.innerHTML = DISEASES.map((d) => {
-    const geneTags = (d.keyGenes || []).map((g) => `<span class="tag gene-tag">${esc(g)}</span>`).join(" ") || `<span class="tag">등록된 유전자 없음</span>`;
-    const mechList = (d.keyMechanisms || []).map((m) => `<li>${esc(m)}</li>`).join("") || "<li>등록된 메커니즘 없음</li>";
-    const linkCount = linksFor(d.id).length;
-    const canDelete = window.AuthGate.canDeleteDisease(AUTH, d);
-    return `<div class="disease-card" data-id="${esc(d.id)}" id="card-${esc(d.id)}">
-      ${canDelete ? `<button class="card-delete" type="button" data-delete="${esc(d.id)}" title="삭제">✕</button>` : ""}
-      <h3>${esc(d.name)}</h3>
-      <p class="desc">${esc(d.description || "설명이 없습니다.")}</p>
-      <div class="section-title">대표 유전자</div>
-      <div class="tags-wrapper">${geneTags}</div>
-      <div class="section-title">주요 메커니즘</div>
-      <ul class="mech-list">${mechList}</ul>
-      ${linkCount ? `<div class="link-count">🔗 연결 ${linkCount}건</div>` : ""}
-    </div>`;
-  }).join("");
-
-  grid.querySelectorAll(".disease-card").forEach((card) => {
-    card.addEventListener("click", (e) => {
-      if (e.target.closest("[data-delete]")) return;
-      openDetail(card.dataset.id);
-    });
-  });
-  grid.querySelectorAll("[data-delete]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.delete;
-      const d = diseaseById(id);
-      if (!confirm(`"${d?.name || id}"을(를) Map에서 삭제할까요?\n관련된 연결선도 함께 삭제됩니다.`)) return;
       try {
-        await window.BioDB.deleteDisease(id);
-        await reloadMap();
-        closeDetail();
+        if (!window.BioDB || typeof window.BioDB.fetchHubData !== "function") {
+          throw new Error("BioDB 모듈을 로드할 수 없습니다.");
+        }
+
+        // Supabase에서 암 8종 및 연결 링크 가져오기
+        const hubData = await window.BioDB.fetchHubData();
+        if (spinnerEl) spinnerEl.style.display = "none";
+
+        // null/undefined 안전 처리
+        const rawDiseases = hubData?.diseases || [];
+        const rawLinks = hubData?.links || [];
+
+        if (rawDiseases.length === 0) {
+          canvasEl.innerHTML = `<div class="empty-state">등록된 암(Disease) 데이터가 없습니다.</div>`;
+          return;
+        }
+
+        // elements 및 keyGenes null 방지 매핑
+        const diseases = rawDiseases.map(d => {
+          const safeGenes = Array.isArray(d?.keyGenes) 
+            ? d.keyGenes 
+            : (Array.isArray(d?.key_genes) ? d.key_genes : []);
+          
+          const safeMechanisms = Array.isArray(d?.keyMechanisms) 
+            ? d.keyMechanisms 
+            : (Array.isArray(d?.key_mechanisms) ? d.key_mechanisms : []);
+
+          return {
+            ...d,
+            keyGenes: safeGenes,
+            keyMechanisms: safeMechanisms,
+            elements: safeGenes // elements 안전 설정
+          };
+        });
+
+        // Map 뷰 HTML 렌더링
+        renderMapGraph(canvasEl, sidebarEl, diseases, rawLinks);
+
       } catch (err) {
-        alert(`삭제 실패: ${err.message || err}`);
+        console.error("Map Data Fetch Error:", err);
+        if (spinnerEl) spinnerEl.style.display = "none";
+        if (errorEl) {
+          errorEl.textContent = `Supabase 데이터를 불러오지 못했습니다: ${err.message || err}`;
+          errorEl.style.display = "block";
+        }
       }
     });
-  });
 
-  drawLinks();
-}
+    function renderMapGraph(container, sidebar, diseases, links) {
+      container.innerHTML = "";
+      
+      const grid = document.createElement("div");
+      grid.className = "disease-grid";
 
-/* ---------- Draw connection lines between related cards ---------- */
-function drawLinks() {
-  const svg = $("link-overlay");
-  const wrap = $("map-wrap");
-  const rect = wrap.getBoundingClientRect();
-  svg.setAttribute("width", rect.width);
-  svg.setAttribute("height", rect.height);
-  svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
-  svg.innerHTML = "";
+      diseases.forEach(d => {
+        const card = document.createElement("div");
+        card.className = "disease-card";
+        
+        // keyGenes/elements 안전 조치
+        const geneList = (d.elements || []).map(g => `<span class="tag gene-tag">${g}</span>`).join(" ") || "<span class='text-muted'>없음</span>";
+        const mechList = (d.keyMechanisms || []).map(m => `<li>${m}</li>`).join("") || "<li>없음</li>";
 
-  LINKS.forEach((link) => {
-    const elA = $(`card-${link.diseaseAId}`);
-    const elB = $(`card-${link.diseaseBId}`);
-    if (!elA || !elB) return;
-    const ra = elA.getBoundingClientRect();
-    const rb = elB.getBoundingClientRect();
-    const x1 = ra.left - rect.left + ra.width / 2;
-    const y1 = ra.top - rect.top + ra.height / 2;
-    const x2 = rb.left - rect.left + rb.width / 2;
-    const y2 = rb.top - rect.top + rb.height / 2;
+        card.innerHTML = `
+          <h3>${d.name || d.id}</h3>
+          <p class="desc">${d.description || "설명이 없습니다."}</p>
+          <div class="section-title">대표 유전자</div>
+          <div class="tags-wrapper">${geneList}</div>
+          <div class="section-title">주요 메커니즘</div>
+          <ul class="mech-list">${mechList}</ul>
+        `;
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", x1);
-    line.setAttribute("y1", y1);
-    line.setAttribute("x2", x2);
-    line.setAttribute("y2", y2);
-    line.dataset.a = link.diseaseAId;
-    line.dataset.b = link.diseaseBId;
-    if (ACTIVE_ID && (link.diseaseAId === ACTIVE_ID || link.diseaseBId === ACTIVE_ID)) line.classList.add("highlight");
-    svg.appendChild(line);
-  });
-}
+        card.addEventListener("click", () => {
+          sidebar.innerHTML = `
+            <h4>${d.name}</h4>
+            <p><strong>ID:</strong> ${d.id}</p>
+            <p><strong>설명:</strong> ${d.description || '-'}</p>
+            <p><strong>관련 유전자:</strong> ${(d.elements || []).join(", ") || '-'}</p>
+            <p><strong>생성일:</strong> ${d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '-'}</p>
+          `;
+        });
 
-let resizeTimer = null;
-window.addEventListener("resize", () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(drawLinks, 120);
-});
+        grid.appendChild(card);
+      });
 
-/* ---------- Detail panel ---------- */
-function openDetail(id) {
-  const d = diseaseById(id);
-  if (!d) return;
-  ACTIVE_ID = id;
-  document.querySelectorAll(".disease-card").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
-  drawLinks();
-
-  const related = linksFor(id).map((l) => {
-    const other = diseaseById(otherId(l, id));
-    return `<div class="related-link">
-      <span>${esc(other?.name || otherId(l, id))}${l.relationNote ? ` — ${esc(l.relationNote)}` : ""}</span>
-    </div>`;
-  }).join("") || `<span class="empty-hint">아직 연결선이 없습니다.</span>`;
-
-  const related_papers = papersFor(d.name).map((p) => `<a class="related-paper" href="entity.html?type=paper&id=${encodeURIComponent(p.id)}&name=${encodeURIComponent(p.title)}">${esc(p.title)}</a>`).join("") || `<span class="empty-hint">연결된 Paper가 없습니다.</span>`;
-
-  $("detail-body").innerHTML = `
-    <span class="type-badge">Disease</span>
-    <h2>${esc(d.name)}</h2>
-    <p class="map-desc">${esc(d.description || "설명이 없습니다.")}</p>
-    <div class="block">
-      <h4>대표 유전자</h4>
-      <div class="tags-wrapper">${(d.keyGenes || []).map((g) => `<span class="tag gene-tag">${esc(g)}</span>`).join(" ") || `<span class="empty-hint">없음</span>`}</div>
-    </div>
-    <div class="block">
-      <h4>주요 메커니즘</h4>
-      <ul class="mech-list">${(d.keyMechanisms || []).map((m) => `<li>${esc(m)}</li>`).join("") || `<li class="empty-hint">없음</li>`}</ul>
-    </div>
-    <div class="block">
-      <h4>연결된 Disease</h4>
-      ${related}
-    </div>
-    <div class="block">
-      <h4>관련 Paper</h4>
-      ${related_papers}
-    </div>
-    ${AUTH.canAddDisease ? `<div class="panel-actions"><a class="btn secondary" href="add.html">Map에서 수정 / 연결 추가하기</a></div>` : ""}
-  `;
-  $("map-detail").classList.add("open");
-}
-function closeDetail() {
-  $("map-detail").classList.remove("open");
-  ACTIVE_ID = null;
-  document.querySelectorAll(".disease-card").forEach((c) => c.classList.remove("active"));
-  drawLinks();
-}
-$("detail-close").addEventListener("click", closeDetail);
-
-/* ---------- Load + init ---------- */
-async function reloadMap() {
-  const hub = await window.BioDB.fetchHubData();
-  DISEASES = hub.diseases || [];
-  LINKS = hub.links || [];
-  renderGrid();
-}
-
-(async function init() {
-  AUTH = await window.AuthGate.requireAuth({ basePath: "../" });
-  if (!AUTH) return;
-
-  try {
-    const [hub, all] = await Promise.all([window.BioDB.fetchHubData(), window.BioDB.fetchAll()]);
-    DISEASES = hub.diseases || [];
-    LINKS = hub.links || [];
-    PAPERS = all.papers || [];
-    $("map-loading").style.display = "none";
-    renderGrid();
-    setTimeout(drawLinks, 60);
-  } catch (err) {
-    console.error("Map fetch error:", err);
-    $("map-loading").style.display = "none";
-    $("error-message").style.display = "block";
-    $("error-message").textContent = `Map 데이터를 불러오지 못했습니다: ${err.message || err}`;
-  }
-})();
-</script>
+      container.appendChild(grid);
+    }
+  </script>
 </body>
 </html>

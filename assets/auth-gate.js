@@ -197,7 +197,6 @@
       isViewer: profile.role === "viewer",
       canAddPaper: ["owner", "member"].includes(profile.role),
       canAddKnowledge: profile.role === "owner",
-      canAddDisease: ["owner", "member"].includes(profile.role),
       canManageUsers: profile.role === "owner",
     };
     mountUserBar(auth);
@@ -212,12 +211,6 @@
   }
   function canDeletePaper(auth) { return !!auth?.isOwner; }
   function canEditKnowledge(auth) { return !!auth?.isOwner; }
-  function canEditDisease(auth, disease) {
-    if (!auth || !disease) return false;
-    if (auth.isOwner) return true;
-    return auth.isMember && String(disease.createdBy) === String(auth.user.id);
-  }
-  function canDeleteDisease(auth, disease) { return canEditDisease(auth, disease); }
 
-  window.AuthGate = { requireAuth, getProfile, roleLabel, canEditPaper, canDeletePaper, canEditKnowledge, canEditDisease, canDeleteDisease, escapeHtml };
+  window.AuthGate = { requireAuth, getProfile, roleLabel, canEditPaper, canDeletePaper, canEditKnowledge, escapeHtml };
 })();
