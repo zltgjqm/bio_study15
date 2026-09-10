@@ -1,45 +1,52 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Add New Entry — Biology Second Brain</title>
-  <link rel="stylesheet" href="../assets/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="../assets/supabase-config.js"></script>
-  <script src="../assets/data.js"></script>
-  <script src="../assets/supabase-db.js"></script>
-  <script src="../assets/auth-gate.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Add · Biology Second Brain</title>
+<link rel="stylesheet" href="../assets/style.css" />
 </head>
 <body>
-  <header class="top-nav">
-    <div class="nav-container">
-      <a href="../index.html" class="logo">Biology Second Brain</a>
-      <nav class="nav-links">
-        <a href="browse.html">Browse</a>
-        <a href="library.html">Library</a>
-        <a href="graph.html">Map</a>
-        <a href="add.html" class="active">Add New</a>
-        <a href="users.html" id="nav-users" style="display:none;">Users</a>
-      </nav>
-      <div class="user-menu" id="user-menu"></div>
-    </div>
-  </header>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><a href="../index.html">Biology Second Brain</a><span class="sub">/ add</span></div>
+  <nav class="top-links">
+    <a href="../index.html">Home</a>
+    <a href="library.html">Library</a>
+    <a href="graph.html">Map</a>
+    <a href="add.html" data-member-plus>+ Add</a>
+    <a href="users.html" data-owner-only>Users</a>
+  </nav>
+</header>
+<ul class="base-track"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></ul>
 
-  <main class="container">
-    <section class="page-header">
-      <h1>Add New Entry</h1>
-      <p>GPT가 생성한 큐레이션 JSON을 붙여넣거나 직접 작성하여 DB 및 Map에 저장합니다.</p>
-    </section>
+<main class="add-shell">
+  <section class="hero" style="padding-bottom:20px;">
+    <div class="hero-eyebrow">Add</div>
+    <h1>새로 추가하기</h1>
+    <p>Paper는 항목별로 전부 입력해서 저장하며, 그 안의 Disease/Gene/Pathway 정보가 Map(Disease)에 자동 동기화됩니다. Map 카드/연결선은 직접 추가할 수도 있습니다.</p>
+  </section>
 
-    <div id="status-message" class="error-banner" style="display: none; margin-bottom: 20px;"></div>
+  <div id="gate-message" class="error-card" style="display:none; margin-bottom:18px;"></div>
 
-    <div class="card">
-      <h2>1. GPT JSON 붙여넣기</h2>
-      <p class="text-muted" style="font-size:0.9rem; margin-bottom:12px;">
-        논문 정보와 함께 <code>disease</code>, <code>genes</code>, <code>pathway</code>(메커니즘) 항목이 포함된 JSON을 넣으면 Map(diseases) 데이터도 자동으로 동기화됩니다.
-      </p>
-      <textarea id="json-input" rows="12" style="width:100%; font-family:monospace; padding:10px;" placeholder='{
+  <div id="add-body" style="display:none;">
+    <div class="add-layout">
+      <div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="paper" type="button">1. Paper 추가</button>
+          <button class="tab-btn" data-tab="disease" type="button">2. Map에 직접 추가</button>
+          <button class="tab-btn" data-tab="link" type="button">3. Map 연결선 추가</button>
+        </div>
+
+        <!-- ============ TAB 1: Paper (full form) ============ -->
+        <div class="tab-panel active" id="tab-paper">
+          <div id="paper-status" class="error-card" style="display:none; margin-bottom:14px;"></div>
+          <p id="paper-edit-banner" class="status" style="display:none; margin-bottom:10px;">✏️ 기존 Paper를 수정하는 중입니다.</p>
+
+          <details style="margin-bottom:18px;">
+            <summary style="cursor:pointer; font-size:13px; color:var(--text-muted); font-weight:600;">GPT JSON으로 빠르게 채우기 (선택)</summary>
+            <div class="form-field full" style="margin-top:10px;">
+              <label>JSON 붙여넣기 <small>아래 "JSON → 폼에 채우기"를 누르면 폼 필드에 자동으로 채워집니다. 저장은 아래 폼의 저장 버튼으로 합니다.</small></label>
+              <textarea id="json-input" class="json-output" placeholder='{
   "title": "Example Paper Title",
   "journal": "Nature Cancer",
   "year": 2024,
@@ -48,98 +55,548 @@
   "pathway": ["EGFR TKI Resistance Mechanism"],
   "summary": ["Summary point 1"]
 }'></textarea>
-      <button id="btn-parse-json" class="btn btn-primary" style="margin-top: 10px;">JSON 저장 및 Map 자동 동기화</button>
+            </div>
+            <div class="action-row">
+              <button id="btn-fill-from-json" class="btn secondary" type="button">JSON → 폼에 채우기</button>
+            </div>
+          </details>
+
+          <form id="paper-form">
+            <div class="form-grid">
+              <div class="form-field full">
+                <label>제목 (Title) <small>필수</small></label>
+                <input id="p-title" type="text" required placeholder="Spatial transcriptomics identifies..." />
+              </div>
+
+              <div class="form-field">
+                <label>Journal</label>
+                <input id="p-journal" type="text" placeholder="Nature Cancer" />
+              </div>
+              <div class="form-field">
+                <label>Year</label>
+                <input id="p-year" type="number" placeholder="2024" />
+              </div>
+
+              <div class="form-field">
+                <label>Authors</label>
+                <input id="p-authors" type="text" placeholder="Kim J, Alvarez R, et al." />
+              </div>
+              <div class="form-field">
+                <label>DOI / URL</label>
+                <input id="p-doi" type="text" placeholder="https://doi.org/..." />
+              </div>
+
+              <div class="form-field">
+                <label>Read Cycle <small>선택</small></label>
+                <input id="p-read-cycle" type="text" placeholder="8월 1주차" />
+              </div>
+              <div class="form-field" id="p-visibility-field">
+                <label>공개 범위 <small>Owner만 변경 가능</small></label>
+                <select id="p-visibility">
+                  <option value="members" selected>members</option>
+                  <option value="public">public</option>
+                  <option value="private">private</option>
+                </select>
+              </div>
+
+              <div class="form-field full">
+                <label>Disease <small>쉼표(,)로 구분 — 여기 적은 이름이 Map(Disease)에 자동 동기화됩니다</small></label>
+                <input id="p-disease" type="text" placeholder="Lung Cancer, PDAC" />
+              </div>
+
+              <div class="form-field">
+                <label>Genes <small>쉼표로 구분</small></label>
+                <input id="p-genes" type="text" placeholder="EGFR, KRAS" />
+              </div>
+              <div class="form-field">
+                <label>Marker Genes <small>쉼표로 구분</small></label>
+                <input id="p-marker-genes" type="text" placeholder="CD68, CD163" />
+              </div>
+
+              <div class="form-field">
+                <label>Cell Types <small>쉼표로 구분</small></label>
+                <input id="p-cell-types" type="text" placeholder="Macrophage, CAF" />
+              </div>
+              <div class="form-field">
+                <label>Tissues <small>쉼표로 구분</small></label>
+                <input id="p-tissues" type="text" placeholder="Lung, Pancreas" />
+              </div>
+
+              <div class="form-field full">
+                <label>Datasets <small>쉼표로 구분</small></label>
+                <input id="p-datasets" type="text" placeholder="GSE12345" />
+              </div>
+
+              <div class="form-field full">
+                <label>Summary <small>한 줄에 하나씩</small></label>
+                <textarea id="p-summary" placeholder="핵심 요약을 한 줄씩 입력"></textarea>
+              </div>
+              <div class="form-field full">
+                <label>New Knowledge <small>한 줄에 하나씩</small></label>
+                <textarea id="p-new-knowledge" placeholder="새롭게 알게 된 점을 한 줄씩 입력"></textarea>
+              </div>
+              <div class="form-field full">
+                <label>Pathway / Mechanism <small>한 줄에 하나씩 — Map(Disease)의 "주요 메커니즘"으로 함께 동기화됩니다</small></label>
+                <textarea id="p-pathway" placeholder="Signal → Effect → Outcome 형태로 한 줄씩 입력"></textarea>
+              </div>
+              <div class="form-field full">
+                <label>Tags <small>쉼표로 구분</small></label>
+                <input id="p-tags" type="text" placeholder="Spatial, Lung" />
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="btn" type="submit" id="paper-submit-btn">Paper 저장 + Map 자동 동기화</button>
+              <button class="btn secondary" type="button" id="paper-cancel-edit" style="display:none;">수정 취소</button>
+              <span class="status" id="paper-inline-status"></span>
+            </div>
+          </form>
+        </div>
+
+        <!-- ============ TAB 2: Disease direct add ============ -->
+        <div class="tab-panel" id="tab-disease">
+          <div id="disease-status" class="error-card" style="display:none; margin-bottom:14px;"></div>
+          <form id="disease-form">
+            <div class="form-grid">
+              <div class="form-field full">
+                <label>Disease / 암종 이름 <small>예: Lung Cancer, 위암</small></label>
+                <input id="disease-name" type="text" required placeholder="Lung Cancer" />
+              </div>
+              <div class="form-field full">
+                <label>설명 <small>선택 입력</small></label>
+                <textarea id="disease-description" placeholder="간단한 설명"></textarea>
+              </div>
+              <div class="form-field full">
+                <label>대표 유전자 <small>쉼표(,)로 구분</small></label>
+                <input id="disease-genes" type="text" placeholder="EGFR, KRAS, TP53" />
+              </div>
+              <div class="form-field full">
+                <label>주요 메커니즘 <small>줄바꿈으로 구분</small></label>
+                <textarea id="disease-mechanisms" placeholder="한 줄에 하나씩 입력"></textarea>
+              </div>
+            </div>
+            <div class="action-row">
+              <button class="btn" type="submit" id="disease-submit-btn">Map에 추가</button>
+              <button class="btn secondary" type="button" id="disease-cancel-edit" style="display:none;">수정 취소</button>
+              <span class="status" id="disease-inline-status"></span>
+            </div>
+          </form>
+
+          <div class="section-label" style="margin-top:36px;">현재 Map에 등록된 Disease</div>
+          <div class="local-list" id="disease-list"><div class="loading-card">불러오는 중...</div></div>
+        </div>
+
+        <!-- ============ TAB 3: Disease link add ============ -->
+        <div class="tab-panel" id="tab-link">
+          <div id="link-status" class="error-card" style="display:none; margin-bottom:14px;"></div>
+          <form id="link-form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Disease A</label>
+                <select id="link-a" required></select>
+              </div>
+              <div class="form-field">
+                <label>Disease B</label>
+                <select id="link-b" required></select>
+              </div>
+              <div class="form-field full">
+                <label>관계 설명 <small>선택 입력, 예: 공유 유전자 KRAS</small></label>
+                <input id="link-note" type="text" placeholder="두 Disease의 관계를 짧게 설명" />
+              </div>
+            </div>
+            <div class="action-row">
+              <button class="btn" type="submit">연결선 추가</button>
+              <span class="status" id="link-inline-status"></span>
+            </div>
+          </form>
+
+          <div class="section-label" style="margin-top:36px;">현재 연결선</div>
+          <div class="local-list" id="link-list"><div class="loading-card">불러오는 중...</div></div>
+        </div>
+      </div>
+
+      <aside class="help-card">
+        <div class="section-label">도움말</div>
+        <div class="local-item">
+          <b>Map 데이터는 두 가지 방식으로 채워집니다</b>
+          <ul class="validation-list">
+            <li>① Paper를 저장하면 입력한 <code>Disease</code>/<code>Genes</code>/<code>Pathway</code> 값이 자동으로 Map(Disease)에 병합됩니다.</li>
+            <li>② Map 탭에서 Disease를 직접 추가/수정할 수 있습니다.</li>
+            <li>연결선은 Owner/Member가 두 Disease를 선택해서 직접 만듭니다.</li>
+          </ul>
+        </div>
+        <div class="local-item" style="margin-top:12px;">
+          <b>권한</b>
+          <p class="form-note">Map 추가/연결선 추가는 Owner와 Member만 가능합니다. Viewer는 Map을 볼 수만 있어요.</p>
+        </div>
+      </aside>
     </div>
-  </main>
+  </div>
+</main>
+<footer>권한은 Supabase RLS로 적용됩니다.</footer>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const jsonInput = document.getElementById("json-input");
-      const parseBtn = document.getElementById("btn-parse-json");
-      const statusEl = document.getElementById("status-message");
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../assets/supabase-config.js"></script>
+<script src="../assets/auth-gate.js"></script>
+<script src="../assets/data.js"></script>
+<script src="../assets/supabase-db.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let AUTH = null;
+let DISEASES = [];
+let LINKS = [];
+let EDIT_DISEASE_ID = null;
 
-      function showStatus(msg, isError = false) {
-        statusEl.textContent = msg;
-        statusEl.style.display = "block";
-        statusEl.style.backgroundColor = isError ? "#ffeeee" : "#eef9ee";
-        statusEl.style.color = isError ? "#cc0000" : "#008800";
-        statusEl.style.border = `1px solid ${isError ? "#ffcccc" : "#ccffcc"}`;
+// 유니코드(한글 포함) 대응 slugify — id는 반드시 값이 나오도록 함
+function slugify(text) {
+  const base = String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}_-]+/gu, "")
+    .replace(/^_+|_+$/g, "");
+  return base || `disease-${Date.now().toString(36)}`;
+}
+function splitCsv(value) {
+  return String(value || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+function splitLines(value) {
+  return String(value || "").split(/\n/).map((s) => s.trim()).filter(Boolean);
+}
+function mergeUnique(a = [], b = []) {
+  const seen = new Set();
+  const out = [];
+  [...a, ...b].forEach((v) => {
+    const key = String(v || "").trim();
+    if (key && !seen.has(key.toLowerCase())) { seen.add(key.toLowerCase()); out.push(key); }
+  });
+  return out;
+}
+function showBox(el, msg, isError = true) {
+  el.textContent = msg;
+  el.style.display = "block";
+  el.className = isError ? "error-card" : "local-item";
+}
+function hideBox(el) { el.style.display = "none"; }
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(`tab-${btn.dataset.tab}`).classList.add("active");
+  });
+});
+
+/* ---------- Map data (diseases + links) ---------- */
+async function reloadMapData() {
+  const hub = await window.BioDB.fetchHubData();
+  DISEASES = hub.diseases || [];
+  LINKS = hub.links || [];
+  renderDiseaseList();
+  renderLinkList();
+  fillLinkSelects();
+}
+
+function diseaseNameById(id) {
+  return DISEASES.find((d) => d.id === id)?.name || id;
+}
+
+function renderDiseaseList() {
+  const box = $("disease-list");
+  if (!DISEASES.length) { box.innerHTML = `<div class="local-item"><span>등록된 Disease가 없습니다.</span></div>`; return; }
+  box.innerHTML = DISEASES.map((d) => {
+    const canEdit = window.AuthGate.canEditDisease(AUTH, d);
+    return `<div class="local-item">
+      <b>${window.AuthGate.escapeHtml(d.name)}</b>
+      <span>${(d.keyGenes || []).map((g) => window.AuthGate.escapeHtml(g)).join(", ") || "대표 유전자 없음"}</span>
+      <div class="manage-actions" style="margin-top:10px;">
+        ${canEdit ? `<button class="btn secondary" type="button" onclick="startEditDisease('${d.id}')">수정</button>` : ""}
+        ${canEdit ? `<button class="btn danger" type="button" onclick="removeDisease('${d.id}','${window.AuthGate.escapeHtml(d.name).replace(/'/g, "\\'")}')">삭제</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderLinkList() {
+  const box = $("link-list");
+  if (!LINKS.length) { box.innerHTML = `<div class="local-item"><span>등록된 연결선이 없습니다.</span></div>`; return; }
+  box.innerHTML = LINKS.map((l) => {
+    const canDelete = AUTH.isOwner || (AUTH.isMember && String(l.createdBy) === String(AUTH.user.id));
+    return `<div class="local-item">
+      <b>${window.AuthGate.escapeHtml(diseaseNameById(l.diseaseAId))} ↔ ${window.AuthGate.escapeHtml(diseaseNameById(l.diseaseBId))}</b>
+      <span>${window.AuthGate.escapeHtml(l.relationNote || "설명 없음")}</span>
+      ${canDelete ? `<div class="manage-actions" style="margin-top:10px;"><button class="btn danger" type="button" onclick="removeLink('${l.id}')">삭제</button></div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function fillLinkSelects() {
+  const opts = DISEASES.map((d) => `<option value="${d.id}">${window.AuthGate.escapeHtml(d.name)}</option>`).join("");
+  $("link-a").innerHTML = opts;
+  $("link-b").innerHTML = opts;
+}
+
+/* ---------- Tab 1: Paper full form + auto Map sync ---------- */
+let EDIT_PAPER_ID = null;
+
+function fieldsToPaperItem() {
+  return {
+    title: $("p-title").value.trim(),
+    journal: $("p-journal").value.trim(),
+    year: $("p-year").value ? Number($("p-year").value) : "",
+    authors: $("p-authors").value.trim(),
+    doiOrUrl: $("p-doi").value.trim(),
+    readCycle: $("p-read-cycle").value.trim(),
+    visibility: $("p-visibility").value,
+    disease: splitCsv($("p-disease").value),
+    genes: splitCsv($("p-genes").value),
+    markerGenes: splitCsv($("p-marker-genes").value),
+    cellTypes: splitCsv($("p-cell-types").value),
+    tissues: splitCsv($("p-tissues").value),
+    datasets: splitCsv($("p-datasets").value),
+    summary: splitLines($("p-summary").value),
+    newKnowledge: splitLines($("p-new-knowledge").value),
+    pathway: splitLines($("p-pathway").value),
+    tags: splitCsv($("p-tags").value),
+  };
+}
+
+function fillPaperForm(p) {
+  $("p-title").value = p.title || "";
+  $("p-journal").value = p.journal || "";
+  $("p-year").value = p.year || "";
+  $("p-authors").value = p.authors || "";
+  $("p-doi").value = p.doiOrUrl || p.doi || p.url || "";
+  $("p-read-cycle").value = p.readCycle || p.read_cycle || "";
+  $("p-visibility").value = p.visibility || "members";
+  $("p-disease").value = (Array.isArray(p.disease) ? p.disease : splitCsv(p.disease)).join(", ");
+  $("p-genes").value = (Array.isArray(p.genes) ? p.genes : splitCsv(p.genes)).join(", ");
+  $("p-marker-genes").value = (Array.isArray(p.markerGenes) ? p.markerGenes : splitCsv(p.markerGenes)).join(", ");
+  $("p-cell-types").value = (Array.isArray(p.cellTypes) ? p.cellTypes : splitCsv(p.cellTypes)).join(", ");
+  $("p-tissues").value = (Array.isArray(p.tissues) ? p.tissues : splitCsv(p.tissues)).join(", ");
+  $("p-datasets").value = (Array.isArray(p.datasets) ? p.datasets : splitCsv(p.datasets)).join(", ");
+  $("p-summary").value = (Array.isArray(p.summary) ? p.summary : splitLines(p.summary)).join("\n");
+  $("p-new-knowledge").value = (Array.isArray(p.newKnowledge) ? p.newKnowledge : splitLines(p.newKnowledge)).join("\n");
+  $("p-pathway").value = (Array.isArray(p.pathway) ? p.pathway : splitLines(p.pathway)).join("\n");
+  $("p-tags").value = (Array.isArray(p.tags) ? p.tags : splitCsv(p.tags)).join(", ");
+}
+
+$("btn-fill-from-json").addEventListener("click", () => {
+  const statusEl = $("paper-status");
+  hideBox(statusEl);
+  const raw = $("json-input").value.trim();
+  if (!raw) { showBox(statusEl, "JSON을 입력해 주세요."); return; }
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { showBox(statusEl, `JSON 형식이 올바르지 않습니다: ${e.message}`); return; }
+  fillPaperForm(data);
+  showBox(statusEl, "폼에 채웠습니다. 내용을 확인하고 아래 저장 버튼을 눌러주세요.", false);
+});
+
+async function syncMapFromPaper(item) {
+  const genesList = item.genes || [];
+  const mechanismsList = (item.pathway && item.pathway.length) ? item.pathway : (item.summary || []);
+  let syncedCount = 0;
+  for (const rawName of (item.disease || [])) {
+    const name = String(rawName || "").trim();
+    if (!name) continue;
+    const id = slugify(name);
+    const existing = DISEASES.find((d) => d.id === id);
+    if (existing) {
+      await window.BioDB.saveDisease({
+        id: existing.id,
+        name: existing.name || name,
+        description: existing.description && existing.description.trim() ? existing.description : `${name} 관련 논문 데이터 기반 자동 등록`,
+        keyGenes: mergeUnique(existing.keyGenes, genesList),
+        keyMechanisms: mergeUnique(existing.keyMechanisms, mechanismsList),
+      }, AUTH, true);
+    } else {
+      await window.BioDB.saveDisease({
+        id, name,
+        description: `${name} 관련 논문 데이터 기반 자동 등록`,
+        keyGenes: genesList,
+        keyMechanisms: mechanismsList,
+      }, AUTH, false);
+    }
+    syncedCount++;
+  }
+  return syncedCount;
+}
+
+$("paper-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = $("paper-status");
+  hideBox(statusEl);
+
+  const item = fieldsToPaperItem();
+  if (!item.title) { showBox(statusEl, "제목(Title)을 입력해 주세요."); return; }
+  if (EDIT_PAPER_ID) item.id = EDIT_PAPER_ID;
+
+  try {
+    await window.BioDB.savePaper(item, AUTH, !!EDIT_PAPER_ID);
+    const syncedCount = await syncMapFromPaper(item);
+
+    showBox(statusEl, `저장 완료! Paper ${EDIT_PAPER_ID ? "수정" : "저장"}됨, Map Disease ${syncedCount}건 동기화됨.`, false);
+    if (!EDIT_PAPER_ID) {
+      $("paper-form").reset();
+      $("json-input").value = "";
+    }
+    await reloadMapData();
+  } catch (err) {
+    console.error("Paper save error:", err);
+    showBox(statusEl, `저장 중 오류: ${err.message || err}`);
+  }
+});
+
+$("paper-cancel-edit").addEventListener("click", () => {
+  EDIT_PAPER_ID = null;
+  $("paper-form").reset();
+  $("paper-edit-banner").style.display = "none";
+  $("paper-cancel-edit").style.display = "none";
+  $("paper-submit-btn").textContent = "Paper 저장 + Map 자동 동기화";
+  history.replaceState(null, "", "add.html");
+});
+
+/* ---------- Tab 2: Disease direct add / edit ---------- */
+window.startEditDisease = function (id) {
+  const d = DISEASES.find((x) => x.id === id);
+  if (!d) return;
+  EDIT_DISEASE_ID = id;
+  $("disease-name").value = d.name || "";
+  $("disease-description").value = d.description || "";
+  $("disease-genes").value = (d.keyGenes || []).join(", ");
+  $("disease-mechanisms").value = (d.keyMechanisms || []).join("\n");
+  $("disease-submit-btn").textContent = "수정 저장";
+  $("disease-cancel-edit").style.display = "inline-flex";
+  document.querySelector('.tab-btn[data-tab="disease"]').click();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+$("disease-cancel-edit").addEventListener("click", () => resetDiseaseForm());
+function resetDiseaseForm() {
+  EDIT_DISEASE_ID = null;
+  $("disease-form").reset();
+  $("disease-submit-btn").textContent = "Map에 추가";
+  $("disease-cancel-edit").style.display = "none";
+}
+
+$("disease-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = $("disease-status");
+  hideBox(statusEl);
+  const name = $("disease-name").value.trim();
+  if (!name) { showBox(statusEl, "Disease 이름을 입력해 주세요."); return; }
+
+  const item = {
+    id: EDIT_DISEASE_ID || slugify(name),
+    name,
+    description: $("disease-description").value.trim(),
+    keyGenes: splitCsv($("disease-genes").value),
+    keyMechanisms: splitLines($("disease-mechanisms").value),
+  };
+
+  try {
+    await window.BioDB.saveDisease(item, AUTH, !!EDIT_DISEASE_ID);
+    showBox(statusEl, EDIT_DISEASE_ID ? "수정되었습니다." : "Map에 추가되었습니다.", false);
+    resetDiseaseForm();
+    await reloadMapData();
+  } catch (err) {
+    console.error("Disease save error:", err);
+    showBox(statusEl, `저장 중 오류: ${err.message || err}`);
+  }
+});
+
+window.removeDisease = async function (id, name) {
+  if (!confirm(`"${name}"을(를) Map에서 삭제할까요?\n관련된 연결선도 함께 삭제됩니다.`)) return;
+  try {
+    await window.BioDB.deleteDisease(id);
+    await reloadMapData();
+  } catch (err) {
+    alert(`삭제 실패: ${err.message || err}`);
+  }
+};
+
+/* ---------- Tab 3: Disease link add ---------- */
+$("link-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const statusEl = $("link-status");
+  hideBox(statusEl);
+  const a = $("link-a").value;
+  const b = $("link-b").value;
+  if (!a || !b) { showBox(statusEl, "Disease가 2개 이상 등록되어 있어야 연결선을 만들 수 있습니다."); return; }
+  if (a === b) { showBox(statusEl, "서로 다른 두 Disease를 선택해 주세요."); return; }
+
+  try {
+    await window.BioDB.saveDiseaseLink({ diseaseAId: a, diseaseBId: b, relationNote: $("link-note").value.trim() }, AUTH);
+    showBox(statusEl, "연결선이 추가되었습니다.", false);
+    $("link-form").reset();
+    await reloadMapData();
+  } catch (err) {
+    console.error("Link save error:", err);
+    const msg = /duplicate key|disease_links_unique/i.test(String(err.message || "")) ? "이미 존재하는 연결입니다." : (err.message || err);
+    showBox(statusEl, `저장 중 오류: ${msg}`);
+  }
+});
+
+window.removeLink = async function (id) {
+  if (!confirm("이 연결선을 삭제할까요?")) return;
+  try {
+    await window.BioDB.deleteDiseaseLink(id);
+    await reloadMapData();
+  } catch (err) {
+    alert(`삭제 실패: ${err.message || err}`);
+  }
+};
+
+/* ---------- Init ---------- */
+(async function init() {
+  AUTH = await window.AuthGate.requireAuth({ basePath: "../" });
+  if (!AUTH) return;
+
+  if (!AUTH.canAddPaper) {
+    $("gate-message").style.display = "block";
+    $("gate-message").textContent = "Add 페이지는 Owner/Member만 접근할 수 있습니다.";
+    return;
+  }
+
+  if (!AUTH.isOwner) {
+    $("p-visibility-field").style.display = "none";
+  }
+
+  $("add-body").style.display = "block";
+  try {
+    await reloadMapData();
+  } catch (e) {
+    console.error(e);
+    $("disease-list").innerHTML = `<div class="error-card">Map 데이터를 불러오지 못했습니다: ${window.AuthGate.escapeHtml(e.message)}</div>`;
+  }
+
+  // ?type=paper&edit=ID 로 들어오면 해당 Paper를 폼에 채워 수정 모드로 전환
+  const params = new URLSearchParams(location.search);
+  const editId = params.get("edit");
+  const editType = params.get("type");
+  if (editId && editType === "paper") {
+    try {
+      const all = await window.BioDB.fetchAll();
+      const target = (all.papers || []).find((p) => String(p.id) === String(editId));
+      if (!target) {
+        showBox($("paper-status"), "수정할 Paper를 찾지 못했습니다. (권한이 없거나 삭제되었을 수 있습니다)");
+      } else if (!window.AuthGate.canEditPaper(AUTH, target)) {
+        showBox($("paper-status"), "이 Paper를 수정할 권한이 없습니다.");
+      } else {
+        EDIT_PAPER_ID = target.id;
+        fillPaperForm(target);
+        $("paper-edit-banner").style.display = "block";
+        $("paper-cancel-edit").style.display = "inline-flex";
+        $("paper-submit-btn").textContent = "수정 저장";
       }
-
-      // 문자열 슬러그화 (예: "Lung Cancer" -> "lung_cancer")
-      function slugify(text) {
-        return String(text || "")
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, "")
-          .replace(/[\s_-]+/g, "_")
-          .replace(/^-+|-+$/g, "");
-      }
-
-      parseBtn.addEventListener("click", async () => {
-        const rawJson = jsonInput.value.trim();
-        if (!rawJson) {
-          showStatus("JSON 코드를 입력해 주세요.", true);
-          return;
-        }
-
-        try {
-          const data = JSON.parse(rawJson);
-          const auth = window.BiologyAuth?.getAuthData ? window.BiologyAuth.getAuthData() : null;
-
-          if (!auth || !auth.user) {
-            throw new Error("로그인이 필요합니다.");
-          }
-
-          // 1. Paper 데이터 저장
-          const savedPaper = await window.BioDB.savePaper(data, auth);
-
-          // 2. Map(diseases 테이블) 자동 생성/업데이트 로직
-          const diseasesList = Array.isArray(data.disease) 
-            ? data.disease 
-            : (data.disease ? [data.disease] : []);
-
-          const genesList = Array.isArray(data.genes) ? data.genes : [];
-          const mechanismsList = Array.isArray(data.pathway) ? data.pathway : (Array.isArray(data.summary) ? data.summary : []);
-
-          let diseaseSavedCount = 0;
-
-          for (const diseaseName of diseasesList) {
-            const diseaseId = slugify(diseaseName);
-            if (!diseaseId) continue;
-
-            // Map용 Disease 데이터 객체 생성
-            const diseaseItem = {
-              id: diseaseId,
-              name: diseaseName,
-              description: `${diseaseName} 관련 논문 데이터 기반 자동 등록`,
-              keyGenes: genesList,
-              keyMechanisms: mechanismsList
-            };
-
-            try {
-              // 기존에 없으면 생성, 있으면 저장
-              await window.BioDB.saveDisease(diseaseItem, auth, false);
-            } catch (e) {
-              // 이미 존재하는 경우 update 모드로 재시도
-              await window.BioDB.saveDisease(diseaseItem, auth, true);
-            }
-            diseaseSavedCount++;
-          }
-
-          showStatus(`성공적으로 저장되었습니다! (논문 1건 저장, Map용 암 데이터 ${diseaseSavedCount}건 동기화 완료)`);
-          jsonInput.value = "";
-
-          setTimeout(() => {
-            window.location.href = "graph.html";
-          }, 1500);
-
-        } catch (err) {
-          console.error("Save Error:", err);
-          showStatus(`저장 중 오류가 발생했습니다: ${err.message || err}`, true);
-        }
-      });
-    });
-  </script>
+    } catch (e) {
+      console.error(e);
+      showBox($("paper-status"), `Paper를 불러오지 못했습니다: ${e.message || e}`);
+    }
+  }
+})();
+</script>
 </body>
 </html>
