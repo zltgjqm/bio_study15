@@ -24,220 +24,378 @@
   <section class="hero" style="padding-bottom:20px;">
     <div class="hero-eyebrow">Disease Map</div>
     <h1>Map</h1>
-    <p>암 종별 주요 유전자, 메커니즘 및 커스텀 연결 관계를 시각적으로 확인합니다. 카드를 클릭하면 상세 정보가 열립니다.</p>
+    <p>저장한 논문(Add)에서 질환·유전자·세포타입·메커니즘을 자동으로 뽑아 연결한 네트워크입니다. 노드를 클릭하면 오른쪽에 설명과 출처가 나옵니다.</p>
   </section>
 
   <div id="error-message" class="error-card" style="display:none; margin-bottom:18px;"></div>
+  <div id="loading-message" class="loading-card">데이터를 불러오는 중입니다...</div>
+  <div id="empty-message" class="loading-card" style="display:none;">등록된 논문이 없습니다. <a href="add.html" data-member-plus>Add 페이지</a>에서 논문을 저장하면 Map이 자동으로 그려집니다.</div>
 
-  <div class="map-wrap" id="map-wrap">
-    <svg id="link-overlay"></svg>
-    <div id="map-loading" class="loading-card">Supabase에서 불러오는 중...</div>
-    <div class="disease-grid" id="disease-grid" style="display:none;"></div>
-    <div id="map-empty" style="display:none;">
-      등록된 Disease가 없습니다.<br />
-      <a href="add.html" data-member-plus>Add 페이지</a>에서 Paper를 저장하거나 Map에 직접 추가해 보세요.
+  <div class="map-shell" id="map-shell" style="display:none;">
+    <div class="map-panel">
+      <div class="filter-head"><span class="label">암종 필터</span>
+        <div class="mini-actions"><button id="filter-all">전체</button><button id="filter-none">해제</button></div>
+      </div>
+      <div class="filter-list" id="filter-list"></div>
+      <div class="map-legend">
+        <div class="item"><span class="swatch round" style="color:var(--text-faint);"></span>질환 (암종마다 다른 색)</div>
+        <div class="item"><span class="swatch" style="color:var(--accent-paper);"></span>논문</div>
+        <div class="item"><span class="swatch round" style="color:var(--accent-gene);"></span>유전자</div>
+        <div class="item"><span class="swatch round" style="color:var(--accent-cell);"></span>세포타입</div>
+        <div class="item"><span class="swatch round" style="color:var(--accent-mechanism);"></span>메커니즘</div>
+      </div>
+    </div>
+
+    <div class="map-panel" id="map-canvas-wrap"></div>
+
+    <div class="map-panel detail-panel" id="detail-panel">
+      <div class="detail-empty">노드를 클릭하면 여기에 상세 정보가 표시됩니다.</div>
     </div>
   </div>
 </main>
 <footer>권한은 Supabase RLS로 적용됩니다.</footer>
 
-<div id="map-detail">
-  <button class="close-btn" id="detail-close">닫기 ✕</button>
-  <div id="detail-body"></div>
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="../assets/supabase-config.js"></script>
 <script src="../assets/auth-gate.js"></script>
 <script src="../assets/data.js"></script>
+<script src="../assets/search.js"></script>
 <script src="../assets/supabase-db.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (v) => window.AuthGate.escapeHtml(v);
+const wiki = window.BiologyWiki;
 let AUTH = null;
-let DISEASES = [];
-let LINKS = [];
 let PAPERS = [];
-let ACTIVE_ID = null;
+let GRAPH = { nodes: [], links: [], diseaseOrder: [] };
+let PAPERS_BY_ID = new Map();
+let NODES_BY_ID = new Map();
+let ACTIVE_DISEASES = new Set();
+let SELECTED_ID = null;
+let POS = {};
+let DRAG_ID = null;
 
-function norm(v) { return String(v || "").trim().toLowerCase(); }
+const W = 1100, H = 700;
+const DISEASE_PALETTE = ["#4f46e5", "#c68022", "#0f8f83", "#8b5a96", "#c84f4b", "#2f6f9f", "#a5583d", "#5c8a3a"];
+const TYPE_LABEL = { disease: "질환", paper: "논문", gene: "유전자", cellType: "세포타입", mechanism: "메커니즘" };
 
-function linksFor(diseaseId) {
-  return LINKS.filter((l) => l.diseaseAId === diseaseId || l.diseaseBId === diseaseId);
+function colorForDisease(name) {
+  const i = GRAPH.diseaseOrder.indexOf(name);
+  return DISEASE_PALETTE[(i < 0 ? 0 : i) % DISEASE_PALETTE.length];
 }
-function otherId(link, diseaseId) {
-  return link.diseaseAId === diseaseId ? link.diseaseBId : link.diseaseAId;
+function typeColor(type, label) {
+  if (type === "disease") return colorForDisease(label);
+  if (type === "gene") return "var(--accent-gene)";
+  if (type === "cellType") return "var(--accent-cell)";
+  if (type === "mechanism") return "var(--accent-mechanism)";
+  return "var(--accent-paper)";
 }
-function diseaseById(id) { return DISEASES.find((d) => d.id === id); }
-function papersFor(diseaseName) {
-  const target = norm(diseaseName);
-  return PAPERS.filter((p) => (p.disease || []).some((d) => norm(d) === target));
+function nodeRadius(n) {
+  const deg = n.papers ? n.papers.size : 1;
+  if (n.type === "disease") return 26 + Math.min(18, deg * 3);
+  if (n.type === "paper") return 8;
+  return 13 + Math.min(9, deg * 2);
 }
 
-/* ---------- Render grid ---------- */
-function renderGrid() {
-  const grid = $("disease-grid");
-  if (!DISEASES.length) {
-    $("map-empty").style.display = "block";
-    grid.style.display = "none";
-    return;
-  }
-  $("map-empty").style.display = "none";
-  grid.style.display = "grid";
+/* ---------- build graph from papers ---------- */
+function buildGraph(papers) {
+  const nodes = new Map();
+  const links = [];
+  const diseaseOrder = [];
+  const ensure = (id, base) => {
+    if (!nodes.has(id)) nodes.set(id, { id, papers: new Set(), diseaseSet: new Set(), ...base });
+    return nodes.get(id);
+  };
 
-  grid.innerHTML = DISEASES.map((d) => {
-    const geneTags = (d.keyGenes || []).map((g) => `<span class="tag gene-tag">${esc(g)}</span>`).join(" ") || `<span class="tag">등록된 유전자 없음</span>`;
-    const mechList = (d.keyMechanisms || []).map((m) => `<li>${esc(m)}</li>`).join("") || "<li>등록된 메커니즘 없음</li>";
-    const linkCount = linksFor(d.id).length;
-    const canDelete = window.AuthGate.canDeleteDisease(AUTH, d);
-    return `<div class="disease-card" data-id="${esc(d.id)}" id="card-${esc(d.id)}">
-      ${canDelete ? `<button class="card-delete" type="button" data-delete="${esc(d.id)}" title="삭제">✕</button>` : ""}
-      <h3>${esc(d.name)}</h3>
-      <p class="desc">${esc(d.description || "설명이 없습니다.")}</p>
-      <div class="section-title">대표 유전자</div>
-      <div class="tags-wrapper">${geneTags}</div>
-      <div class="section-title">주요 메커니즘</div>
-      <ul class="mech-list">${mechList}</ul>
-      ${linkCount ? `<div class="link-count">🔗 연결 ${linkCount}건</div>` : ""}
-    </div>`;
-  }).join("");
+  papers.forEach((paper) => {
+    const diseases = (paper.disease || []).map((d) => String(d).trim()).filter(Boolean);
+    diseases.forEach((d) => { if (!diseaseOrder.includes(d)) diseaseOrder.push(d); });
 
-  grid.querySelectorAll(".disease-card").forEach((card) => {
-    card.addEventListener("click", (e) => {
-      if (e.target.closest("[data-delete]")) return;
-      openDetail(card.dataset.id);
+    diseases.forEach((d) => {
+      const n = ensure("d:" + d.toLowerCase(), { type: "disease", label: d });
+      n.papers.add(paper.id);
+      n.diseaseSet.add(d);
+    });
+
+    const pid = "p:" + paper.id;
+    const pnode = ensure(pid, { type: "paper", label: paper.title, paper });
+    diseases.forEach((d) => pnode.diseaseSet.add(d));
+    const primaryDisease = diseases[0] || null;
+
+    diseases.forEach((d) => {
+      links.push({ source: "d:" + d.toLowerCase(), target: pid, color: colorForDiseaseLocal(diseaseOrder, d) });
+    });
+
+    (paper.genes || []).forEach((g) => {
+      const name = String(g).trim(); if (!name) return;
+      const id = "g:" + name.toLowerCase();
+      const n = ensure(id, { type: "gene", label: name });
+      n.papers.add(paper.id);
+      diseases.forEach((d) => n.diseaseSet.add(d));
+      links.push({ source: pid, target: id, color: colorForDiseaseLocal(diseaseOrder, primaryDisease) });
+    });
+
+    (paper.cellTypes || []).forEach((c) => {
+      const name = String(c).trim(); if (!name) return;
+      const id = "c:" + name.toLowerCase();
+      const n = ensure(id, { type: "cellType", label: name });
+      n.papers.add(paper.id);
+      diseases.forEach((d) => n.diseaseSet.add(d));
+      links.push({ source: pid, target: id, color: colorForDiseaseLocal(diseaseOrder, primaryDisease) });
+    });
+
+    const chain = (paper.pathway || []).map((s) => String(s).trim()).filter(Boolean);
+    let prevId = null;
+    chain.forEach((step, i) => {
+      const id = "m:" + step.toLowerCase();
+      const n = ensure(id, { type: "mechanism", label: step });
+      n.papers.add(paper.id);
+      diseases.forEach((d) => n.diseaseSet.add(d));
+      const from = i === 0 ? pid : prevId;
+      links.push({ source: from, target: id, color: colorForDiseaseLocal(diseaseOrder, primaryDisease), chain: true });
+      prevId = id;
     });
   });
-  grid.querySelectorAll("[data-delete]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.delete;
-      const d = diseaseById(id);
-      if (!confirm(`"${d?.name || id}"을(를) Map에서 삭제할까요?\n관련된 연결선도 함께 삭제됩니다.`)) return;
-      try {
-        await window.BioDB.deleteDisease(id);
-        await reloadMap();
-        closeDetail();
-      } catch (err) {
-        alert(`삭제 실패: ${err.message || err}`);
-      }
-    });
-  });
 
-  drawLinks();
+  return { nodes: Array.from(nodes.values()), links, diseaseOrder };
+}
+function colorForDiseaseLocal(diseaseOrder, name) {
+  if (!name) return "#9a9488";
+  const i = diseaseOrder.indexOf(name);
+  return DISEASE_PALETTE[(i < 0 ? 0 : i) % DISEASE_PALETTE.length];
 }
 
-/* ---------- Draw connection lines between related cards ---------- */
-function drawLinks() {
-  const svg = $("link-overlay");
-  const wrap = $("map-wrap");
-  const rect = wrap.getBoundingClientRect();
-  svg.setAttribute("width", rect.width);
-  svg.setAttribute("height", rect.height);
-  svg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
-  svg.innerHTML = "";
+/* ---------- sentence extraction ---------- */
+function extractSentences(term, node) {
+  const t = term.toLowerCase();
+  const out = [];
+  node.papers.forEach((pid) => {
+    const paper = PAPERS_BY_ID.get(pid);
+    if (!paper) return;
+    ["summary", "newKnowledge", "pathway"].forEach((field) => {
+      (paper[field] || []).forEach((line) => {
+        if (out.length < 6 && String(line).toLowerCase().includes(t)) {
+          out.push({ text: line, paperTitle: paper.title, paperId: paper.id });
+        }
+      });
+    });
+  });
+  return out;
+}
 
-  LINKS.forEach((link) => {
-    const elA = $(`card-${link.diseaseAId}`);
-    const elB = $(`card-${link.diseaseBId}`);
-    if (!elA || !elB) return;
-    const ra = elA.getBoundingClientRect();
-    const rb = elB.getBoundingClientRect();
-    const x1 = ra.left - rect.left + ra.width / 2;
-    const y1 = ra.top - rect.top + ra.height / 2;
-    const x2 = rb.left - rect.left + rb.width / 2;
-    const y2 = rb.top - rect.top + rb.height / 2;
+/* ---------- layout ---------- */
+function computeLayout() {
+  const simNodes = GRAPH.nodes.map((n) => ({ ...n }));
+  const simLinks = GRAPH.links.map((l) => ({ ...l }));
+  const sim = d3.forceSimulation(simNodes)
+    .force("link", d3.forceLink(simLinks).id((d) => d.id).distance((d) => (d.chain ? 80 : 62)).strength(0.55))
+    .force("charge", d3.forceManyBody().strength(-220))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("collision", d3.forceCollide().radius((d) => nodeRadius(d) + 12))
+    .stop();
+  for (let i = 0; i < 300; i++) sim.tick();
+  const pos = {};
+  simNodes.forEach((n) => { pos[n.id] = { x: n.x, y: n.y }; });
+  return pos;
+}
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", x1);
-    line.setAttribute("y1", y1);
-    line.setAttribute("x2", x2);
-    line.setAttribute("y2", y2);
-    line.dataset.a = link.diseaseAId;
-    line.dataset.b = link.diseaseBId;
-    if (ACTIVE_ID && (link.diseaseAId === ACTIVE_ID || link.diseaseBId === ACTIVE_ID)) line.classList.add("highlight");
+/* ---------- render ---------- */
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVGNS, tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
+  return el;
+}
+
+function visibleNodeIds() {
+  const set = new Set();
+  GRAPH.nodes.forEach((n) => {
+    if (n.diseaseSet.size === 0) { set.add(n.id); return; }
+    let show = false;
+    n.diseaseSet.forEach((d) => { if (ACTIVE_DISEASES.has(d)) show = true; });
+    if (show) set.add(n.id);
+  });
+  return set;
+}
+function linkEndpointId(v) { return typeof v === "object" ? v.id : v; }
+
+function renderGraph() {
+  const wrap = $("map-canvas-wrap");
+  wrap.innerHTML = "";
+  const svg = svgEl("svg", { width: "100%", height: 700, viewBox: `0 0 ${W} ${H}` });
+  wrap.appendChild(svg);
+
+  const defs = svgEl("defs", {});
+  const marker = svgEl("marker", { id: "mg-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
+  marker.appendChild(svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: "var(--accent-mechanism)", opacity: 0.7 }));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  const visible = visibleNodeIds();
+  const linkEls = new Map();
+  GRAPH.links.forEach((l, i) => {
+    const s = linkEndpointId(l.source), t = linkEndpointId(l.target);
+    const p1 = POS[s], p2 = POS[t];
+    if (!p1 || !p2) return;
+    const show = visible.has(s) && visible.has(t);
+    const line = svgEl("line", {
+      class: "mg-link", x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+      stroke: l.color, "stroke-width": l.chain ? 2 : 1.2,
+      "stroke-opacity": l.chain ? 0.6 : 0.28,
+      style: show ? "" : "display:none;",
+    });
+    if (l.chain) line.setAttribute("marker-end", "url(#mg-arrow)");
     svg.appendChild(line);
+    linkEls.set(i, { el: line, s, t });
+  });
+
+  GRAPH.nodes.forEach((n) => {
+    const pos = POS[n.id];
+    if (!pos) return;
+    const show = visible.has(n.id);
+    const g = svgEl("g", { class: "mg-node", transform: `translate(${pos.x},${pos.y})`, style: show ? "" : "display:none;" });
+    g.dataset.id = n.id;
+    const r = nodeRadius(n);
+    const fill = typeColor(n.type, n.label);
+    let shape;
+    if (n.type === "paper") {
+      shape = svgEl("rect", { x: -r, y: -r, width: r * 2, height: r * 2, rx: 3, fill: "#fff", stroke: fill, "stroke-width": n.id === SELECTED_ID ? 2.6 : 1.4 });
+    } else {
+      shape = svgEl("circle", { r, fill: n.type === "disease" ? fill : "#fff", "fill-opacity": n.type === "disease" ? 0.92 : 1, stroke: fill, "stroke-width": n.id === SELECTED_ID ? 3 : 1.6 });
+    }
+    g.appendChild(shape);
+    const label = String(n.label).length > 22 ? String(n.label).slice(0, 21) + "…" : n.label;
+    const text = svgEl("text", { class: "mg-node-label", y: r + 13, "text-anchor": "middle", "font-size": n.type === "disease" ? 12.5 : 10.5, "font-weight": n.type === "disease" ? 700 : 500, fill: n.type === "disease" ? fill : "var(--text)" });
+    text.textContent = label;
+    g.appendChild(text);
+    g.addEventListener("pointerdown", (e) => { e.stopPropagation(); startDrag(n.id, e); });
+    g.addEventListener("click", () => selectNode(n.id));
+    svg.appendChild(g);
+  });
+
+  wrap._svg = svg;
+  wrap._linkEls = linkEls;
+}
+
+function startDrag(id, evt) {
+  DRAG_ID = id;
+  const svg = $("map-canvas-wrap")._svg;
+  const move = (e) => {
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const loc = pt.matrixTransform(ctm.inverse());
+    POS[DRAG_ID] = { x: loc.x, y: loc.y };
+    const g = svg.querySelector(`.mg-node[data-id="${cssEscapeId(DRAG_ID)}"]`);
+    if (g) g.setAttribute("transform", `translate(${loc.x},${loc.y})`);
+    ($("map-canvas-wrap")._linkEls || new Map()).forEach(({ el, s, t }) => {
+      if (s === DRAG_ID) { el.setAttribute("x1", loc.x); el.setAttribute("y1", loc.y); }
+      if (t === DRAG_ID) { el.setAttribute("x2", loc.x); el.setAttribute("y2", loc.y); }
+    });
+  };
+  const up = () => {
+    DRAG_ID = null;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+function cssEscapeId(v) { return String(v).replace(/(["\\])/g, "\\$1"); }
+
+/* ---------- filters ---------- */
+function renderFilterList() {
+  const el = $("filter-list");
+  el.innerHTML = GRAPH.diseaseOrder.map((d) => `
+    <label><input type="checkbox" data-disease="${esc(d)}" ${ACTIVE_DISEASES.has(d) ? "checked" : ""} />
+    <span class="dot" style="background:${colorForDisease(d)};"></span>${esc(d)}</label>
+  `).join("");
+  el.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const d = cb.dataset.disease;
+      if (cb.checked) ACTIVE_DISEASES.add(d); else ACTIVE_DISEASES.delete(d);
+      renderGraph();
+    });
   });
 }
+$("filter-all").addEventListener("click", () => { ACTIVE_DISEASES = new Set(GRAPH.diseaseOrder); renderFilterList(); renderGraph(); });
+$("filter-none").addEventListener("click", () => { ACTIVE_DISEASES = new Set(); renderFilterList(); renderGraph(); });
 
-let resizeTimer = null;
-window.addEventListener("resize", () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(drawLinks, 120);
-});
+/* ---------- detail panel ---------- */
+function chip(label, color, onclick) {
+  return `<button class="detail-chip" style="color:${color};" onclick="${onclick}">${esc(label)}</button>`;
+}
+function selectNode(id) {
+  SELECTED_ID = id;
+  renderGraph();
+  const n = NODES_BY_ID.get(id);
+  const panel = $("detail-panel");
+  if (!n) { panel.innerHTML = `<div class="detail-empty">노드를 클릭하면 여기에 상세 정보가 표시됩니다.</div>`; return; }
+  const color = typeColor(n.type, n.label);
+  let body = "";
 
-/* ---------- Detail panel ---------- */
-function openDetail(id) {
-  const d = diseaseById(id);
-  if (!d) return;
-  ACTIVE_ID = id;
-  document.querySelectorAll(".disease-card").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
-  drawLinks();
+  if (n.type === "paper") {
+    const p = n.paper;
+    body += `<div class="detail-meta">${[p.journal, p.year].filter(Boolean).join(" · ")}${p.authors ? `<div>${esc(p.authors)}</div>` : ""}</div>`;
+    if (p.doiOrUrl) body += `<a href="${esc(p.doiOrUrl)}" target="_blank" rel="noreferrer" style="font-size:12.5px;color:var(--accent-disease);">원문 링크 ↗</a>`;
+    if (p.summary?.length) body += `<div class="detail-block"><h5>요약</h5><ul>${p.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (p.newKnowledge?.length) body += `<div class="detail-block"><h5>새로운 지식</h5><ul>${p.newKnowledge.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>`;
+    if (p.disease?.length) body += `<div class="detail-block"><h5>질환</h5><div class="detail-chip-row">${p.disease.map((d) => chip(d, colorForDisease(d), `selectNode('d:${d.toLowerCase()}')`)).join("")}</div></div>`;
+    if (p.genes?.length) body += `<div class="detail-block"><h5>유전자</h5><div class="detail-chip-row">${p.genes.map((g) => chip(g, "var(--accent-gene)", `selectNode('g:${g.toLowerCase()}')`)).join("")}</div></div>`;
+  } else if (n.type === "disease") {
+    const papers = Array.from(n.papers).map((pid) => PAPERS_BY_ID.get(pid)).filter(Boolean);
+    body += `<div class="detail-block"><h5>관련 논문 (${papers.length})</h5>${
+      papers.map((p) => `<div class="detail-link-row" onclick="selectNode('p:${p.id}')"><span>${esc(p.title)}${p.year ? ` (${p.year})` : ""}</span><span>›</span></div>`).join("") || '<div class="detail-empty">없음</div>'
+    }</div>`;
+  } else {
+    const sentences = extractSentences(n.label, n);
+    if (sentences.length) {
+      body += `<div class="detail-block"><h5>관련 문장</h5>${
+        sentences.map((s) => `<div class="detail-sentence">${esc(s.text)}<div class="src" onclick="selectNode('p:${s.paperId}')">— ${esc(s.paperTitle)}</div></div>`).join("")
+      }</div>`;
+    }
+    const diseases = Array.from(n.diseaseSet);
+    if (diseases.length) body += `<div class="detail-block"><h5>관련 질환</h5><div class="detail-chip-row">${diseases.map((d) => chip(d, colorForDisease(d), `selectNode('d:${d.toLowerCase()}')`)).join("")}</div></div>`;
+    const papers = Array.from(n.papers).map((pid) => PAPERS_BY_ID.get(pid)).filter(Boolean);
+    body += `<div class="detail-block"><h5>출처 논문</h5>${
+      papers.map((p) => `<div class="detail-link-row" onclick="selectNode('p:${p.id}')"><span>${esc(p.title)}</span><span>›</span></div>`).join("") || '<div class="detail-empty">없음</div>'
+    }</div>`;
+  }
 
-  const related = linksFor(id).map((l) => {
-    const other = diseaseById(otherId(l, id));
-    return `<div class="related-link">
-      <span>${esc(other?.name || otherId(l, id))}${l.relationNote ? ` — ${esc(l.relationNote)}` : ""}</span>
-    </div>`;
-  }).join("") || `<span class="empty-hint">아직 연결선이 없습니다.</span>`;
-
-  const related_papers = papersFor(d.name).map((p) => `<a class="related-paper" href="entity.html?type=paper&id=${encodeURIComponent(p.id)}&name=${encodeURIComponent(p.title)}">${esc(p.title)}</a>`).join("") || `<span class="empty-hint">연결된 Paper가 없습니다.</span>`;
-
-  $("detail-body").innerHTML = `
-    <span class="type-badge">Disease</span>
-    <h2>${esc(d.name)}</h2>
-    <p class="map-desc">${esc(d.description || "설명이 없습니다.")}</p>
-    <div class="block">
-      <h4>대표 유전자</h4>
-      <div class="tags-wrapper">${(d.keyGenes || []).map((g) => `<span class="tag gene-tag">${esc(g)}</span>`).join(" ") || `<span class="empty-hint">없음</span>`}</div>
-    </div>
-    <div class="block">
-      <h4>주요 메커니즘</h4>
-      <ul class="mech-list">${(d.keyMechanisms || []).map((m) => `<li>${esc(m)}</li>`).join("") || `<li class="empty-hint">없음</li>`}</ul>
-    </div>
-    <div class="block">
-      <h4>연결된 Disease</h4>
-      ${related}
-    </div>
-    <div class="block">
-      <h4>관련 Paper</h4>
-      ${related_papers}
-    </div>
-    ${AUTH.canAddDisease ? `<div class="panel-actions"><a class="btn secondary" href="add.html">Map에서 수정 / 연결 추가하기</a></div>` : ""}
+  panel.innerHTML = `
+    <div class="detail-type" style="color:${color};">${TYPE_LABEL[n.type]}</div>
+    <div class="detail-title">${esc(n.type === "paper" ? n.paper.title : n.label)}</div>
+    ${body}
   `;
-  $("map-detail").classList.add("open");
 }
-function closeDetail() {
-  $("map-detail").classList.remove("open");
-  ACTIVE_ID = null;
-  document.querySelectorAll(".disease-card").forEach((c) => c.classList.remove("active"));
-  drawLinks();
-}
-$("detail-close").addEventListener("click", closeDetail);
+window.selectNode = selectNode;
 
-/* ---------- Load + init ---------- */
-async function reloadMap() {
-  const hub = await window.BioDB.fetchHubData();
-  DISEASES = hub.diseases || [];
-  LINKS = hub.links || [];
-  renderGrid();
-}
-
+/* ---------- init ---------- */
 (async function init() {
   AUTH = await window.AuthGate.requireAuth({ basePath: "../" });
   if (!AUTH) return;
 
   try {
-    const [hub, all] = await Promise.all([window.BioDB.fetchHubData(), window.BioDB.fetchAll()]);
-    DISEASES = hub.diseases || [];
-    LINKS = hub.links || [];
+    const all = await window.BioDB.fetchAll();
     PAPERS = all.papers || [];
-    $("map-loading").style.display = "none";
-    renderGrid();
-    setTimeout(drawLinks, 60);
+    PAPERS_BY_ID = new Map(PAPERS.map((p) => [p.id, p]));
+
+    $("loading-message").style.display = "none";
+    if (!PAPERS.length) { $("empty-message").style.display = "block"; return; }
+
+    GRAPH = buildGraph(PAPERS);
+    NODES_BY_ID = new Map(GRAPH.nodes.map((n) => [n.id, n]));
+    ACTIVE_DISEASES = new Set(GRAPH.diseaseOrder);
+    POS = computeLayout();
+
+    $("map-shell").style.display = "grid";
+    renderFilterList();
+    renderGraph();
   } catch (err) {
     console.error("Map fetch error:", err);
-    $("map-loading").style.display = "none";
+    $("loading-message").style.display = "none";
     $("error-message").style.display = "block";
     $("error-message").textContent = `Map 데이터를 불러오지 못했습니다: ${err.message || err}`;
   }
