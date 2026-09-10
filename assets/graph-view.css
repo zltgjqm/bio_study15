@@ -1,90 +1,117 @@
-/* Map / Network graph page — built on the existing style.css design tokens */
+/* Map / Disease graph page — built on the existing style.css design tokens */
 
-.map-shell {
+.map-wrap {
+  position: relative;
+  margin-top: 8px;
+}
+
+.disease-grid {
   display: grid;
-  grid-template-columns: 264px 1fr;
-  height: calc(100vh - 64px);
-  min-height: 560px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  position: relative;
+  z-index: 2;
 }
 
-.map-sidebar {
-  border-right: 1px solid var(--border-soft);
-  background: var(--surface);
-  padding: 20px 18px;
-  overflow-y: auto;
+.disease-card {
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 20px;
+  padding: 20px;
+  cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  position: relative;
 }
-.map-sidebar h3 {
+.disease-card:hover {
+  border-color: var(--accent-disease);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(79,70,229,.10);
+}
+.disease-card.active { border-color: var(--accent-disease); box-shadow: 0 0 0 2px rgba(79,70,229,.18); }
+.disease-card h3 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0 0 8px;
+  color: var(--text);
+  padding-right: 22px;
+}
+.disease-card .desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+  min-height: 20px;
+}
+.disease-card .section-title {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: .05em;
   color: var(--text-faint);
-  margin: 22px 0 10px;
+  margin: 10px 0 7px;
 }
-.map-sidebar h3:first-child { margin-top: 0; }
-
-.layer-row, .disease-row {
-  display: flex;
+.disease-card .tags-wrapper { display: flex; flex-wrap: wrap; gap: 6px; }
+.disease-card .gene-tag { border-color: rgba(198,128,34,.35); color: var(--accent-gene); }
+.disease-card .mech-list { margin: 0; padding-left: 16px; color: var(--text-muted); font-size: 12.5px; line-height: 1.6; }
+.disease-card .mech-list li { margin-bottom: 3px; }
+.disease-card .link-count {
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 4px;
-  border-radius: 8px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 13.5px;
+  gap: 5px;
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-disease);
 }
-.layer-row:hover, .disease-row:hover { background: var(--surface-hover); }
-.layer-row input, .disease-row input { accent-color: var(--text); }
-
-.type-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.type-dot.disease { background: var(--accent-disease); }
-.type-dot.gene { background: var(--accent-gene); }
-.type-dot.cell_type { background: var(--accent-cell); }
-.type-dot.tissue { background: var(--accent-tissue); }
-.type-dot.paper { background: var(--accent-paper); border-radius: 3px; }
-.type-dot.knowledge { background: var(--accent-knowledge); border-radius: 3px; }
-
-.map-actions { display: flex; gap: 8px; margin-bottom: 4px; }
-.map-actions button {
-  font-family: var(--font-body);
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+.disease-card .card-delete {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-soft);
   background: #fff;
-  color: var(--text-muted);
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
 }
-.map-actions button:hover { color: var(--text); border-color: var(--text-faint); }
+.disease-card .card-delete:hover { color: #b42318; border-color: #f2b8b5; }
 
-.legend-line { display: inline-block; width: 16px; height: 2px; border-radius: 1px; margin-right: 9px; vertical-align: middle; }
-.legend-item { display: flex; align-items: center; font-size: 12.5px; color: var(--text-muted); padding: 4px 0; }
-
-.map-main { position: relative; background: #fbfbfc; }
-#cy { width: 100%; height: 100%; }
-
-.map-canvas-controls {
+#link-overlay {
   position: absolute;
-  bottom: 18px;
-  left: 18px;
-  display: flex;
-  gap: 8px;
-  z-index: 5;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
 }
+#link-overlay line {
+  stroke: var(--accent-disease);
+  stroke-width: 1.6;
+  stroke-opacity: .45;
+}
+#link-overlay line.highlight { stroke-opacity: .9; stroke-width: 2.2; }
+#link-overlay circle.link-dot { fill: var(--accent-disease); opacity: .55; }
 
+/* ---------- Detail side panel ---------- */
 #map-detail {
-  position: absolute;
+  position: fixed;
   top: 0; right: 0;
-  width: 360px;
+  width: 380px;
+  max-width: 92vw;
   height: 100%;
   background: #fff;
   border-left: 1px solid var(--border-soft);
-  box-shadow: -12px 0 30px rgba(0,0,0,.05);
+  box-shadow: -12px 0 30px rgba(0,0,0,.08);
   transform: translateX(100%);
   transition: transform .2s ease;
   overflow-y: auto;
-  padding: 24px 22px;
-  z-index: 10;
+  padding: 26px 24px;
+  z-index: 50;
 }
 #map-detail.open { transform: translateX(0); }
 #map-detail .close-btn {
@@ -94,6 +121,7 @@
   color: var(--text-faint);
   font-size: 13px;
   cursor: pointer;
+  font-family: var(--font-body);
 }
 #map-detail .close-btn:hover { color: var(--text); }
 #map-detail .type-badge {
@@ -104,19 +132,19 @@
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border-soft);
-  color: var(--text-muted);
+  color: var(--accent-disease);
   margin-bottom: 12px;
 }
 #map-detail h2 {
   font-family: var(--font-display);
   font-weight: 650;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.4;
   margin: 4px 0 6px;
+  clear: both;
 }
-#map-detail .map-meta { color: var(--text-faint); font-size: 12.5px; font-family: var(--font-mono); margin-bottom: 16px; }
 #map-detail .map-desc { font-size: 13.5px; line-height: 1.7; color: var(--text); margin-bottom: 18px; }
-#map-detail .block { margin-bottom: 18px; }
+#map-detail .block { margin-bottom: 20px; }
 #map-detail .block h4 {
   font-family: var(--font-display);
   font-size: 12.5px;
@@ -126,40 +154,32 @@
   letter-spacing: .04em;
   margin: 0 0 10px;
 }
-#map-detail .related-paper {
+#map-detail .related-paper,
+#map-detail .related-link {
   display: block;
   font-size: 13px;
   color: var(--text);
-  padding: 9px 11px;
+  padding: 10px 12px;
   border: 1px solid var(--border-soft);
-  border-radius: 10px;
+  border-radius: 12px;
   margin-bottom: 7px;
   text-decoration: none;
 }
-#map-detail .related-paper:hover { border-color: var(--border); background: var(--surface); }
-#map-detail .open-full {
-  display: inline-block;
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.chip-btn, #map-detail .related-paper {
-  font: inherit;
-  -webkit-appearance: none;
-  appearance: none;
-}
+#map-detail .related-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#map-detail .related-paper:hover { border-color: var(--accent-disease); background: var(--surface); }
+#map-detail .empty-hint { color: var(--text-faint); font-size: 12.5px; }
+#map-detail .panel-actions { margin-top: 22px; display: flex; gap: 8px; flex-wrap: wrap; }
 
 #map-empty {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-faint); font-size: 13.5px; text-align: center; padding: 40px;
+  border: 1px dashed var(--border-soft);
+  border-radius: 20px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13.5px;
 }
 
-@media (max-width: 860px) {
-  .map-shell { grid-template-columns: 1fr; height: auto; }
-  .map-sidebar { max-height: 260px; }
-  .map-main { height: 70vh; }
+@media (max-width: 620px) {
+  .disease-grid { grid-template-columns: 1fr; }
   #map-detail { width: 100%; }
 }
